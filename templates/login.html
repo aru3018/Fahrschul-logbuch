@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Anmelden · Start Drive Fahrschule</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="login-wrap">
+        <div class="login-card">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Start Drive Fahrschule" class="login-logo">
+            <h1 class="login-title">Anmelden</h1>
+
+            {% if fehler %}
+            <p class="login-fehler">{{ fehler }}</p>
+            {% endif %}
+
+            <form method="post" class="form">
+                <input type="hidden" name="weiter" value="{{ weiter }}">
+                <label>Benutzername
+                    <input type="text" name="benutzername" required autofocus autocomplete="username">
+                </label>
+                <label>Passwort
+                    <input type="password" name="passwort" required autocomplete="current-password">
+                </label>
+                <button type="submit" class="btn btn-primary login-btn">Anmelden</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -10,17 +10,63 @@ Start:
 Dann im Browser: http://localhost:5000
 """
 
+import os
 import sqlite3
 from datetime import datetime
+from functools import wraps
 from pathlib import Path
 
-from flask import Flask, render_template, request, redirect, url_for, g
+from flask import Flask, render_template, request, redirect, url_for, g, session
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "logbuch.db"
 SCHEMA_PATH = BASE_DIR / "schema.sql"
 
 app = Flask(__name__)
+# Für Produktivbetrieb sollte der Secret Key über eine Umgebungsvariable
+# gesetzt werden (z. B. FLASK_SECRET_KEY=... in der systemd-Unit), damit
+# Sessions auch nach einem Neustart gültig bleiben.
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-key-bitte-in-produktion-ersetzen")
+
+# ---------- Login (Prototyp: zwei feste Konten) ----------
+
+BENUTZER = {
+    "aru": {"passwort": "Test123", "rolle": "user", "anzeigename": "Aru"},
+    "Administrator": {"passwort": "Admin$1", "rolle": "admin", "anzeigename": "Administrator"},
+}
+
+
+def login_erforderlich(view):
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if "benutzer" not in session:
+            return redirect(url_for("login", weiter=request.path))
+        return view(*args, **kwargs)
+    return wrapper
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    fehler = None
+    if request.method == "POST":
+        name = request.form.get("benutzername", "").strip()
+        passwort = request.form.get("passwort", "")
+        konto = BENUTZER.get(name)
+        if konto and konto["passwort"] == passwort:
+            session["benutzer"] = name
+            session["rolle"] = konto["rolle"]
+            session["anzeigename"] = konto["anzeigename"]
+            ziel = request.form.get("weiter") or url_for("index")
+            return redirect(ziel)
+        fehler = "Benutzername oder Passwort ist falsch."
+    weiter = request.args.get("weiter", "")
+    return render_template("login.html", fehler=fehler, weiter=weiter)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 # ---------- Datenbank-Hilfsfunktionen ----------
@@ -53,6 +99,7 @@ def init_db():
 # ---------- Übersichtsseite: alle Schüler ----------
 
 @app.route("/")
+@login_erforderlich
 def index():
     db = get_db()
     schueler = db.execute(
@@ -72,6 +119,7 @@ def index():
 # ---------- Schüler anlegen ----------
 
 @app.route("/schueler/neu", methods=["GET", "POST"])
+@login_erforderlich
 def schueler_neu():
     if request.method == "POST":
         db = get_db()
@@ -96,6 +144,7 @@ def schueler_neu():
 # ---------- Schülerdetail: Verlauf + neue Lektion erfassen ----------
 
 @app.route("/schueler/<int:schueler_id>", methods=["GET", "POST"])
+@login_erforderlich
 def schueler_detail(schueler_id):
     db = get_db()
 
@@ -189,6 +238,7 @@ def schueler_detail(schueler_id):
 # ---------- Schüler bearbeiten (Kontaktdaten + Status) ----------
 
 @app.route("/schueler/<int:schueler_id>/bearbeiten", methods=["GET", "POST"])
+@login_erforderlich
 def schueler_bearbeiten(schueler_id):
     db = get_db()
     schueler = db.execute("SELECT * FROM schueler WHERE id = ?", (schueler_id,)).fetchone()
@@ -222,6 +272,7 @@ def schueler_bearbeiten(schueler_id):
 # ---------- Lektion löschen (Korrektur bei Fehleingabe) ----------
 
 @app.route("/lektion/<int:lektion_id>/loeschen", methods=["POST"])
+@login_erforderlich
 def lektion_loeschen(lektion_id):
     db = get_db()
     row = db.execute("SELECT schueler_id FROM lektion WHERE id = ?", (lektion_id,)).fetchone()

@@ -8,9 +8,17 @@
 </head>
 <body>
     <header class="topbar">
-        <a href="{{ url_for('index') }}" class="brand">
-            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Start Drive Fahrschule" class="brand-logo">
-        </a>
+        <div class="topbar-inner">
+            <a href="{{ url_for('index') }}" class="brand">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Start Drive Fahrschule" class="brand-logo">
+            </a>
+            {% if session.get('benutzer') %}
+            <div class="user-area">
+                <span class="user-name">{{ session.get('anzeigename') }}</span>
+                <a href="{{ url_for('logout') }}" class="logout-link">Abmelden</a>
+            </div>
+            {% endif %}
+        </div>
     </header>
     <main class="container">
         {% block content %}{% endblock %}
