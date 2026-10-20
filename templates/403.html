@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Kein Zugriff · Start Drive Fahrschule{% endblock %}
+{% block content %}
+
+<section class="card" style="text-align:center;">
+    <h1>🚫 Kein Zugriff</h1>
+    <p class="muted">Dieser Schüler gehört einem anderen Fahrlehrer-Konto. Du kannst nur deine eigenen Schüler einsehen.</p>
+    <a href="{{ url_for('index') }}" class="btn btn-primary">← Zurück zur Übersicht</a>
+</section>
+
+{% endblock %}

@@ -16,7 +16,7 @@ from datetime import datetime
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, render_template, request, redirect, url_for, g, session
+from flask import Flask, render_template, request, redirect, url_for, g, session, abort
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "logbuch.db"
@@ -28,10 +28,11 @@ app = Flask(__name__)
 # Sessions auch nach einem Neustart gültig bleiben.
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-key-bitte-in-produktion-ersetzen")
 
-# ---------- Login (Prototyp: zwei feste Konten) ----------
+# ---------- Login (Prototyp: feste Konten) ----------
 
 BENUTZER = {
     "aru": {"passwort": "Test123", "rolle": "user", "anzeigename": "Aru"},
+    "Viji": {"passwort": "Viji1$", "rolle": "user", "anzeigename": "Viji"},
     "Administrator": {"passwort": "Admin$1", "rolle": "admin", "anzeigename": "Administrator"},
 }
 
@@ -45,6 +46,24 @@ def login_erforderlich(view):
     return wrapper
 
 
+def admin_erforderlich(view):
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if "benutzer" not in session:
+            return redirect(url_for("login", weiter=request.path))
+        if session.get("rolle") != "admin":
+            abort(403)
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def pruefe_zugriff(schueler):
+    """Bricht mit 403 ab, falls der eingeloggte Benutzer diesen Schüler
+    weder selbst erstellt hat noch Administrator ist."""
+    if session.get("rolle") != "admin" and schueler["erstellt_von"] != session.get("benutzer"):
+        abort(403)
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     fehler = None
@@ -56,7 +75,8 @@ def login():
             session["benutzer"] = name
             session["rolle"] = konto["rolle"]
             session["anzeigename"] = konto["anzeigename"]
-            ziel = request.form.get("weiter") or url_for("index")
+            standardziel = url_for("admin_dashboard") if konto["rolle"] == "admin" else url_for("index")
+            ziel = request.form.get("weiter") or standardziel
             return redirect(ziel)
         fehler = "Benutzername oder Passwort ist falsch."
     weiter = request.args.get("weiter", "")
@@ -90,6 +110,13 @@ def init_db():
     first_run = not DB_PATH.exists()
     db = sqlite3.connect(DB_PATH)
     db.executescript(SCHEMA_PATH.read_text())
+
+    # Migration für bestehende Datenbanken (vor Einführung der Login-Trennung
+    # angelegt): Spalte "erstellt_von" nachträglich ergänzen, falls sie fehlt.
+    spalten = [row[1] for row in db.execute("PRAGMA table_info(schueler)").fetchall()]
+    if "erstellt_von" not in spalten:
+        db.execute("ALTER TABLE schueler ADD COLUMN erstellt_von TEXT NOT NULL DEFAULT 'aru'")
+
     db.commit()
     db.close()
     if first_run:
@@ -102,18 +129,27 @@ def init_db():
 @login_erforderlich
 def index():
     db = get_db()
-    schueler = db.execute(
-        """
+    ist_admin = session.get("rolle") == "admin"
+
+    basis_query = """
         SELECT s.*,
                COUNT(l.id) AS anzahl_lektionen,
                COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten
         FROM schueler s
         LEFT JOIN lektion l ON l.schueler_id = s.id
+        {where}
         GROUP BY s.id
         ORDER BY s.nachname, s.vorname
-        """
-    ).fetchall()
-    return render_template("index.html", schueler=schueler)
+    """
+    if ist_admin:
+        schueler = db.execute(basis_query.format(where="")).fetchall()
+    else:
+        schueler = db.execute(
+            basis_query.format(where="WHERE s.erstellt_von = ?"),
+            (session["benutzer"],),
+        ).fetchall()
+
+    return render_template("index.html", schueler=schueler, ist_admin=ist_admin)
 
 
 # ---------- Schüler anlegen ----------
@@ -125,8 +161,8 @@ def schueler_neu():
         db = get_db()
         db.execute(
             """
-            INSERT INTO schueler (vorname, nachname, email, telefon, lernfahrausweis_nr, status)
-            VALUES (?, ?, ?, ?, ?, 'aktiv')
+            INSERT INTO schueler (vorname, nachname, email, telefon, lernfahrausweis_nr, status, erstellt_von)
+            VALUES (?, ?, ?, ?, ?, 'aktiv', ?)
             """,
             (
                 request.form["vorname"].strip(),
@@ -134,6 +170,7 @@ def schueler_neu():
                 request.form.get("email", "").strip(),
                 request.form.get("telefon", "").strip(),
                 request.form.get("lernfahrausweis_nr", "").strip(),
+                session["benutzer"],
             ),
         )
         db.commit()
@@ -147,6 +184,11 @@ def schueler_neu():
 @login_erforderlich
 def schueler_detail(schueler_id):
     db = get_db()
+
+    schueler_pruefung = db.execute("SELECT * FROM schueler WHERE id = ?", (schueler_id,)).fetchone()
+    if schueler_pruefung is None:
+        return redirect(url_for("index"))
+    pruefe_zugriff(schueler_pruefung)
 
     if request.method == "POST":
         dauer = int(request.form["dauer_minuten"])
@@ -171,9 +213,7 @@ def schueler_detail(schueler_id):
         db.commit()
         return redirect(url_for("schueler_detail", schueler_id=schueler_id))
 
-    schueler = db.execute("SELECT * FROM schueler WHERE id = ?", (schueler_id,)).fetchone()
-    if schueler is None:
-        return redirect(url_for("index"))
+    schueler = schueler_pruefung
 
     themen = db.execute("SELECT * FROM thema ORDER BY kategorie, bezeichnung").fetchall()
     anzahl_themen_total = len(themen)
@@ -244,6 +284,7 @@ def schueler_bearbeiten(schueler_id):
     schueler = db.execute("SELECT * FROM schueler WHERE id = ?", (schueler_id,)).fetchone()
     if schueler is None:
         return redirect(url_for("index"))
+    pruefe_zugriff(schueler)
 
     if request.method == "POST":
         db.execute(
@@ -275,13 +316,84 @@ def schueler_bearbeiten(schueler_id):
 @login_erforderlich
 def lektion_loeschen(lektion_id):
     db = get_db()
-    row = db.execute("SELECT schueler_id FROM lektion WHERE id = ?", (lektion_id,)).fetchone()
+    row = db.execute(
+        """
+        SELECT l.schueler_id, s.erstellt_von
+        FROM lektion l JOIN schueler s ON s.id = l.schueler_id
+        WHERE l.id = ?
+        """,
+        (lektion_id,),
+    ).fetchone()
     if row is not None:
+        pruefe_zugriff(row)
         db.execute("DELETE FROM lektion WHERE id = ?", (lektion_id,))
         db.commit()
         return redirect(url_for("schueler_detail", schueler_id=row["schueler_id"]))
     return redirect(url_for("index"))
 
+
+# ---------- Admin-Dashboard ----------
+
+@app.route("/admin")
+@admin_erforderlich
+def admin_dashboard():
+    db = get_db()
+
+    gesamt = db.execute(
+        """
+        SELECT COUNT(DISTINCT s.id) AS anzahl_schueler,
+               COUNT(l.id) AS anzahl_lektionen,
+               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten
+        FROM schueler s
+        LEFT JOIN lektion l ON l.schueler_id = s.id
+        """
+    ).fetchone()
+
+    pro_fahrlehrer = db.execute(
+        """
+        SELECT s.erstellt_von AS benutzer,
+               COUNT(DISTINCT s.id) AS anzahl_schueler,
+               COUNT(l.id) AS anzahl_lektionen,
+               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten
+        FROM schueler s
+        LEFT JOIN lektion l ON l.schueler_id = s.id
+        GROUP BY s.erstellt_von
+        ORDER BY s.erstellt_von
+        """
+    ).fetchall()
+
+    alle_schueler = db.execute(
+        """
+        SELECT s.*,
+               COUNT(l.id) AS anzahl_lektionen,
+               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten
+        FROM schueler s
+        LEFT JOIN lektion l ON l.schueler_id = s.id
+        GROUP BY s.id
+        ORDER BY s.erstellt_von, s.nachname, s.vorname
+        """
+    ).fetchall()
+
+    benutzerkonten = [
+        {"benutzername": name, **{k: v for k, v in daten.items() if k != "passwort"}}
+        for name, daten in BENUTZER.items()
+    ]
+
+    gesamt_stunden = round((gesamt["total_minuten"] or 0) / 60, 1)
+
+    return render_template(
+        "admin_dashboard.html",
+        gesamt=gesamt,
+        gesamt_stunden=gesamt_stunden,
+        pro_fahrlehrer=pro_fahrlehrer,
+        alle_schueler=alle_schueler,
+        benutzerkonten=benutzerkonten,
+    )
+
+
+@app.errorhandler(403)
+def kein_zugriff(e):
+    return render_template("403.html"), 403
 
 
 # Datenbank immer initialisieren, wenn das Modul geladen wird – nicht nur

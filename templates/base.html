@@ -14,6 +14,10 @@
             </a>
             {% if session.get('benutzer') %}
             <div class="user-area">
+                {% if session.get('rolle') == 'admin' %}
+                    <a href="{{ url_for('admin_dashboard') }}" class="logout-link">📊 Dashboard</a>
+                    <a href="{{ url_for('index') }}" class="logout-link">Alle Schüler</a>
+                {% endif %}
                 <span class="user-name">{{ session.get('anzeigename') }}</span>
                 <a href="{{ url_for('logout') }}" class="logout-link">Abmelden</a>
             </div>

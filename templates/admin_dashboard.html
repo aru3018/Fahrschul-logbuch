@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Admin-Dashboard · Start Drive Fahrschule{% endblock %}
+{% block content %}
+
+<div class="page-head">
+    <h1>Admin-Dashboard</h1>
+    <a href="{{ url_for('schueler_neu') }}" class="btn btn-primary">+ Neuer Schüler</a>
+</div>
+
+<div class="stat-row">
+    <div class="stat-card">
+        <span class="stat-value">{{ gesamt.anzahl_schueler }}</span>
+        <span class="stat-label">Schüler gesamt</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ gesamt.anzahl_lektionen }}</span>
+        <span class="stat-label">Lektionen gesamt</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ gesamt_stunden }} h</span>
+        <span class="stat-label">Fahrzeit gesamt</span>
+    </div>
+</div>
+
+<div class="grid-2">
+    <section class="card">
+        <h2>👥 Fahrlehrer-Übersicht</h2>
+        <table class="table table-compact">
+            <thead>
+                <tr><th>Fahrlehrer</th><th>Schüler</th><th>Lektionen</th><th>Stunden</th></tr>
+            </thead>
+            <tbody>
+                {% for f in pro_fahrlehrer %}
+                <tr>
+                    <td><strong>{{ f.benutzer }}</strong></td>
+                    <td>{{ f.anzahl_schueler }}</td>
+                    <td>{{ f.anzahl_lektionen }}</td>
+                    <td>{{ "%.1f"|format(f.total_minuten / 60) }} h</td>
+                </tr>
+                {% else %}
+                <tr><td colspan="4" class="muted">Noch keine Schüler erfasst.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>🔑 Benutzerkonten</h2>
+        <table class="table table-compact">
+            <thead>
+                <tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th></tr>
+            </thead>
+            <tbody>
+                {% for b in benutzerkonten %}
+                <tr>
+                    <td>{{ b.benutzername }}</td>
+                    <td>{{ b.anzeigename }}</td>
+                    <td>
+                        {% if b.rolle == 'admin' %}
+                            <span class="badge badge-pruefung_bestanden">Admin</span>
+                        {% else %}
+                            <span class="badge badge-aktiv">Fahrlehrer</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        <p class="small muted" style="margin-top:12px; margin-bottom:0;">
+            Konten sind im Prototyp fest hinterlegt (noch keine Benutzerverwaltung über die Oberfläche).
+        </p>
+    </section>
+</div>
+
+<section class="card">
+    <h2>📋 Alle Schüler (fahrlehrerübergreifend)</h2>
+    {% if alle_schueler %}
+    <table class="table">
+        <thead>
+            <tr><th>Name</th><th>Fahrlehrer</th><th>Status</th><th>Lektionen</th><th>Stunden</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for s in alle_schueler %}
+            <tr>
+                <td><strong>{{ s.vorname }} {{ s.nachname }}</strong></td>
+                <td>{{ s.erstellt_von }}</td>
+                <td><span class="badge badge-{{ s.status }}">{{ s.status|replace('_', ' ') }}</span></td>
+                <td>{{ s.anzahl_lektionen }}</td>
+                <td>{{ "%.1f"|format(s.total_minuten / 60) }} h</td>
+                <td><a href="{{ url_for('schueler_detail', schueler_id=s.id) }}" class="btn btn-small">Öffnen</a></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Noch keine Schüler im System.</p>
+    {% endif %}
+</section>
+
+{% endblock %}

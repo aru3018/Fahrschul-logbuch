@@ -21,6 +21,7 @@
     <thead>
         <tr>
             <th>Name</th>
+            {% if ist_admin %}<th>Fahrlehrer</th>{% endif %}
             <th>Status</th>
             <th>Lektionen</th>
             <th>Total Stunden</th>
@@ -34,6 +35,7 @@
                 <strong>{{ s.vorname }} {{ s.nachname }}</strong>
                 {% if s.email %}<br><span class="muted">{{ s.email }}</span>{% endif %}
             </td>
+            {% if ist_admin %}<td>{{ s.erstellt_von }}</td>{% endif %}
             <td><span class="badge badge-{{ s.status }}">{{ s.status|replace('_', ' ') }}</span></td>
             <td>{{ s.anzahl_lektionen }}</td>
             <td>{{ "%.1f"|format(s.total_minuten / 60) }} h</td>

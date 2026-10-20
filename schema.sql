@@ -8,7 +8,8 @@ CREATE TABLE IF NOT EXISTS schueler (
     telefon TEXT,
     lernfahrausweis_nr TEXT,
     status TEXT NOT NULL DEFAULT 'aktiv',  -- aktiv, pausiert, pruefung_bestanden
-    erstellt_am TEXT NOT NULL DEFAULT (datetime('now'))
+    erstellt_am TEXT NOT NULL DEFAULT (datetime('now')),
+    erstellt_von TEXT NOT NULL DEFAULT 'aru'  -- Benutzername des Fahrlehrers, dem der Schüler gehört
 );
 
 CREATE TABLE IF NOT EXISTS thema (
