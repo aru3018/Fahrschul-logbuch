@@ -1,0 +1,151 @@
+{% extends "base.html" %}
+{% block title %}{{ schueler.vorname }} {{ schueler.nachname }} · Fahrschul-Logbuch{% endblock %}
+{% block content %}
+
+<div class="page-head">
+    <h1>{{ schueler.vorname }} {{ schueler.nachname }}</h1>
+    <div class="button-group">
+        <a href="{{ url_for('schueler_bearbeiten', schueler_id=schueler.id) }}" class="btn btn-ghost">✎ Bearbeiten</a>
+        <a href="{{ url_for('index') }}" class="btn btn-ghost">← Übersicht</a>
+    </div>
+</div>
+
+<div class="stat-row">
+    <div class="stat-card">
+        <span class="stat-value">{{ lektionen|length }}</span>
+        <span class="stat-label">Lektionen</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ "%.1f"|format(total_minuten / 60) }} h</span>
+        <span class="stat-label">Total Fahrzeit</span>
+    </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ schueler.status|replace('_', ' ') }}</span>
+        <span class="stat-label">Status</span>
+    </div>
+</div>
+
+<section class="card">
+    <h2>Gesamtfortschritt</h2>
+    <div class="progress-row">
+        <div class="progress-bar">
+            <div class="progress-bar-fill" style="width: {{ fortschritt_prozent }}%"></div>
+        </div>
+        <span class="progress-label">{{ anzahl_themen_geuebt }} von {{ anzahl_themen_total }} Themen schon mal geübt ({{ fortschritt_prozent }}%)</span>
+    </div>
+</section>
+
+<div class="grid-2">
+    <section class="card">
+        <h2>Fortschritt nach Thema</h2>
+        <table class="table table-compact">
+            <thead>
+                <tr><th>Thema</th><th>Geübt</th><th>Letzte Einschätzung</th></tr>
+            </thead>
+            <tbody>
+                {% for f in fortschritt %}
+                <tr>
+                    <td>{{ f.bezeichnung }}<br><span class="muted small">{{ f.kategorie }}</span></td>
+                    <td>{{ f.anzahl_geuebt }}×</td>
+                    <td>
+                        {% if f.letzte_einschaetzung %}
+                            {% if f.letzte_einschaetzung == 3 %}
+                                <span class="badge badge-sicher">sicher</span>
+                            {% elif f.letzte_einschaetzung == 2 %}
+                                <span class="badge badge-uebung">Übung nötig</span>
+                            {% else %}
+                                <span class="badge badge-unsicher">unsicher</span>
+                            {% endif %}
+                        {% else %}
+                            <span class="muted">noch nicht geübt</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section class="card">
+        <h2>Neue Lektion erfassen</h2>
+        <form method="post" class="form">
+            <div class="form-row">
+                <label>Datum
+                    <input type="date" name="datum" value="{{ heute }}" required>
+                </label>
+                <label>Dauer (Minuten)
+                    <input type="number" name="dauer_minuten" value="45" min="5" step="5" required>
+                </label>
+            </div>
+
+            <label>Geübte Themen</label>
+            {% for kategorie, gruppe in themen|groupby('kategorie') %}
+            <div class="themen-gruppe">
+                <div class="themen-gruppe-titel">{{ kategorie }}</div>
+                <div class="checkbox-grid">
+                    {% for t in gruppe %}
+                    <label class="checkbox-item">
+                        <input type="checkbox" name="themen" value="{{ t.id }}">
+                        {{ t.bezeichnung }}
+                    </label>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+
+            <label>Einschätzung
+                <select name="einschaetzung" required>
+                    <option value="3">Sicher</option>
+                    <option value="2" selected>Übung nötig</option>
+                    <option value="1">Unsicher</option>
+                </select>
+            </label>
+
+            <label>Notiz
+                <textarea name="notiz" rows="3" placeholder="z. B. Rückwärtsparkieren noch unsicher, braucht mehr Übung im Kreisverkehr …"></textarea>
+            </label>
+
+            <button type="submit" class="btn btn-primary">Lektion speichern</button>
+        </form>
+    </section>
+</div>
+
+<section class="card">
+    <h2>Verlauf</h2>
+    {% if lektionen %}
+    <table class="table">
+        <thead>
+            <tr><th>Datum</th><th>Dauer</th><th>Themen</th><th>Einschätzung</th><th>Notiz</th><th></th></tr>
+        </thead>
+        <tbody>
+            {% for l in lektionen %}
+            <tr>
+                <td>{{ l.datum }}</td>
+                <td>{{ l.dauer_minuten }} min</td>
+                <td>{{ l.themen_namen or "–" }}</td>
+                <td>
+                    {% if l.einschaetzung == 3 %}
+                        <span class="badge badge-sicher">sicher</span>
+                    {% elif l.einschaetzung == 2 %}
+                        <span class="badge badge-uebung">Übung nötig</span>
+                    {% else %}
+                        <span class="badge badge-unsicher">unsicher</span>
+                    {% endif %}
+                </td>
+                <td class="muted">{{ l.notiz or "–" }}</td>
+                <td>
+                    <form method="post" action="{{ url_for('lektion_loeschen', lektion_id=l.id) }}"
+                          onsubmit="return confirm('Diese Lektion wirklich löschen?');">
+                        <button type="submit" class="btn btn-small btn-danger">Löschen</button>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p class="muted">Noch keine Lektionen erfasst.</p>
+    {% endif %}
+</section>
+
+{% endblock %}

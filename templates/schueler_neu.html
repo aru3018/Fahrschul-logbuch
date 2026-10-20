@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Neuer Schüler · Fahrschul-Logbuch{% endblock %}
+{% block content %}
+
+<div class="page-head">
+    <h1>Neuen Schüler anlegen</h1>
+    <a href="{{ url_for('index') }}" class="btn btn-ghost">← Zurück</a>
+</div>
+
+<form method="post" class="card form">
+    <div class="form-row">
+        <label>Vorname
+            <input type="text" name="vorname" required>
+        </label>
+        <label>Nachname
+            <input type="text" name="nachname" required>
+        </label>
+    </div>
+    <div class="form-row">
+        <label>E-Mail
+            <input type="email" name="email">
+        </label>
+        <label>Telefon
+            <input type="tel" name="telefon">
+        </label>
+    </div>
+    <label>Lernfahrausweis-Nr. (optional)
+        <input type="text" name="lernfahrausweis_nr">
+    </label>
+    <button type="submit" class="btn btn-primary">Speichern</button>
+</form>
+
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Übersicht · Fahrschul-Logbuch{% endblock %}
+{% block content %}
+
+<div class="page-head">
+    <h1>Schüler-Übersicht</h1>
+    <a href="{{ url_for('schueler_neu') }}" class="btn btn-primary">+ Neuer Schüler</a>
+</div>
+
+{% if schueler %}
+<input
+    type="text"
+    id="suche"
+    class="suchfeld"
+    placeholder="🔍 Schüler suchen …"
+    onkeyup="schuelerFiltern()"
+    autocomplete="off"
+>
+
+<table class="table" id="schueler-tabelle">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Status</th>
+            <th>Lektionen</th>
+            <th>Total Stunden</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in schueler %}
+        <tr class="schueler-zeile" data-name="{{ (s.vorname ~ ' ' ~ s.nachname)|lower }}">
+            <td>
+                <strong>{{ s.vorname }} {{ s.nachname }}</strong>
+                {% if s.email %}<br><span class="muted">{{ s.email }}</span>{% endif %}
+            </td>
+            <td><span class="badge badge-{{ s.status }}">{{ s.status|replace('_', ' ') }}</span></td>
+            <td>{{ s.anzahl_lektionen }}</td>
+            <td>{{ "%.1f"|format(s.total_minuten / 60) }} h</td>
+            <td><a href="{{ url_for('schueler_detail', schueler_id=s.id) }}" class="btn btn-small">Öffnen</a></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p id="keine-treffer" class="muted" style="display:none;">Keine Schüler gefunden.</p>
+{% else %}
+<p class="muted">Noch keine Schüler erfasst. Leg den ersten mit „+ Neuer Schüler" an.</p>
+{% endif %}
+
+<script>
+function schuelerFiltern() {
+    const suchwert = document.getElementById("suche").value.toLowerCase();
+    const zeilen = document.querySelectorAll(".schueler-zeile");
+    let treffer = 0;
+    zeilen.forEach(zeile => {
+        const passt = zeile.dataset.name.includes(suchwert);
+        zeile.style.display = passt ? "" : "none";
+        if (passt) treffer++;
+    });
+    document.getElementById("keine-treffer").style.display = treffer === 0 ? "" : "none";
+}
+</script>
+
+{% endblock %}

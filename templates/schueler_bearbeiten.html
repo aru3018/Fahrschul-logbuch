@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}{{ schueler.vorname }} bearbeiten · Fahrschul-Logbuch{% endblock %}
+{% block content %}
+
+<div class="page-head">
+    <h1>Schüler bearbeiten</h1>
+    <a href="{{ url_for('schueler_detail', schueler_id=schueler.id) }}" class="btn btn-ghost">← Zurück</a>
+</div>
+
+<form method="post" class="card form">
+    <div class="form-row">
+        <label>Vorname
+            <input type="text" name="vorname" value="{{ schueler.vorname }}" required>
+        </label>
+        <label>Nachname
+            <input type="text" name="nachname" value="{{ schueler.nachname }}" required>
+        </label>
+    </div>
+    <div class="form-row">
+        <label>E-Mail
+            <input type="email" name="email" value="{{ schueler.email or '' }}">
+        </label>
+        <label>Telefon
+            <input type="tel" name="telefon" value="{{ schueler.telefon or '' }}">
+        </label>
+    </div>
+    <div class="form-row">
+        <label>Lernfahrausweis-Nr.
+            <input type="text" name="lernfahrausweis_nr" value="{{ schueler.lernfahrausweis_nr or '' }}">
+        </label>
+        <label>Status
+            <select name="status">
+                <option value="aktiv" {% if schueler.status == 'aktiv' %}selected{% endif %}>Aktiv</option>
+                <option value="pausiert" {% if schueler.status == 'pausiert' %}selected{% endif %}>Pausiert</option>
+                <option value="pruefung_bestanden" {% if schueler.status == 'pruefung_bestanden' %}selected{% endif %}>Prüfung bestanden</option>
+            </select>
+        </label>
+    </div>
+    <button type="submit" class="btn btn-primary">Speichern</button>
+</form>
+
+{% endblock %}
