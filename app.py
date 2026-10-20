@@ -283,6 +283,12 @@ def lektion_loeschen(lektion_id):
     return redirect(url_for("index"))
 
 
+
+# Datenbank immer initialisieren, wenn das Modul geladen wird – nicht nur
+# beim direkten Start per "python app.py". Das ist wichtig für den Betrieb
+# über einen WSGI-Server wie gunicorn, der die App nur importiert und daher
+# den "__main__"-Block sonst nie ausführen würde.
+init_db()
+
 if __name__ == "__main__":
-    init_db()
     app.run(debug=True, host="0.0.0.0", port=5000)
