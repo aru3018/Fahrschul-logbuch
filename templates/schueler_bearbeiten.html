@@ -36,7 +36,34 @@
             </select>
         </label>
     </div>
+    <div class="form-row">
+        <label>Fahrzeug
+            <select name="fahrzeug" id="fahrzeug-auswahl">
+                <option value="" {% if not schueler.fahrzeug %}selected{% endif %}>– kein Fahrzeug zugewiesen –</option>
+                {% for name in fahrzeuge %}
+                <option value="{{ name }}" {% if schueler.fahrzeug == name %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Getriebe
+            <select name="getriebe" id="getriebe-auswahl">
+                <option value="" {% if not schueler.getriebe %}selected{% endif %}>–</option>
+                <option value="Automatik" {% if schueler.getriebe == 'Automatik' %}selected{% endif %}>Automatik</option>
+                <option value="Geschaltet" {% if schueler.getriebe == 'Geschaltet' %}selected{% endif %}>Geschaltet</option>
+            </select>
+        </label>
+    </div>
     <button type="submit" class="btn btn-primary">Speichern</button>
 </form>
+
+<script>
+const FAHRZEUG_GETRIEBE = {{ fahrzeuge|tojson }};
+document.getElementById("fahrzeug-auswahl").addEventListener("change", function () {
+    const getriebe = FAHRZEUG_GETRIEBE[this.value];
+    if (getriebe) {
+        document.getElementById("getriebe-auswahl").value = getriebe;
+    }
+});
+</script>
 
 {% endblock %}

@@ -30,6 +30,13 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-key-bitte-in-produktion
 
 # ---------- Login (Prototyp: feste Konten) ----------
 
+# Fahrzeugflotte: Name -> Standard-Getriebeart (wird beim Anlegen/Bearbeiten
+# automatisch vorausgewählt, lässt sich aber von Hand übersteuern).
+FAHRZEUGE = {
+    "Tesla Model 3": "Automatik",
+    "Mercedes-Benz A43": "Geschaltet",
+}
+
 BENUTZER = {
     "aru": {"passwort": "Test123", "rolle": "user", "anzeigename": "Aru"},
     "Viji": {"passwort": "Viji1$", "rolle": "user", "anzeigename": "Viji"},
@@ -116,6 +123,10 @@ def init_db():
     spalten = [row[1] for row in db.execute("PRAGMA table_info(schueler)").fetchall()]
     if "erstellt_von" not in spalten:
         db.execute("ALTER TABLE schueler ADD COLUMN erstellt_von TEXT NOT NULL DEFAULT 'aru'")
+    if "fahrzeug" not in spalten:
+        db.execute("ALTER TABLE schueler ADD COLUMN fahrzeug TEXT")
+    if "getriebe" not in spalten:
+        db.execute("ALTER TABLE schueler ADD COLUMN getriebe TEXT")
 
     db.commit()
     db.close()
@@ -161,8 +172,9 @@ def schueler_neu():
         db = get_db()
         db.execute(
             """
-            INSERT INTO schueler (vorname, nachname, email, telefon, lernfahrausweis_nr, status, erstellt_von)
-            VALUES (?, ?, ?, ?, ?, 'aktiv', ?)
+            INSERT INTO schueler
+                (vorname, nachname, email, telefon, lernfahrausweis_nr, status, erstellt_von, fahrzeug, getriebe)
+            VALUES (?, ?, ?, ?, ?, 'aktiv', ?, ?, ?)
             """,
             (
                 request.form["vorname"].strip(),
@@ -171,11 +183,13 @@ def schueler_neu():
                 request.form.get("telefon", "").strip(),
                 request.form.get("lernfahrausweis_nr", "").strip(),
                 session["benutzer"],
+                request.form.get("fahrzeug", "").strip(),
+                request.form.get("getriebe", "").strip(),
             ),
         )
         db.commit()
         return redirect(url_for("index"))
-    return render_template("schueler_neu.html")
+    return render_template("schueler_neu.html", fahrzeuge=FAHRZEUGE)
 
 
 # ---------- Schülerdetail: Verlauf + neue Lektion erfassen ----------
@@ -291,7 +305,7 @@ def schueler_bearbeiten(schueler_id):
             """
             UPDATE schueler
             SET vorname = ?, nachname = ?, email = ?, telefon = ?,
-                lernfahrausweis_nr = ?, status = ?
+                lernfahrausweis_nr = ?, status = ?, fahrzeug = ?, getriebe = ?
             WHERE id = ?
             """,
             (
@@ -301,13 +315,15 @@ def schueler_bearbeiten(schueler_id):
                 request.form.get("telefon", "").strip(),
                 request.form.get("lernfahrausweis_nr", "").strip(),
                 request.form["status"],
+                request.form.get("fahrzeug", "").strip(),
+                request.form.get("getriebe", "").strip(),
                 schueler_id,
             ),
         )
         db.commit()
         return redirect(url_for("schueler_detail", schueler_id=schueler_id))
 
-    return render_template("schueler_bearbeiten.html", schueler=schueler)
+    return render_template("schueler_bearbeiten.html", schueler=schueler, fahrzeuge=FAHRZEUGE)
 
 
 # ---------- Lektion löschen (Korrektur bei Fehleingabe) ----------
@@ -329,6 +345,32 @@ def lektion_loeschen(lektion_id):
         db.execute("DELETE FROM lektion WHERE id = ?", (lektion_id,))
         db.commit()
         return redirect(url_for("schueler_detail", schueler_id=row["schueler_id"]))
+    return redirect(url_for("index"))
+
+
+# ---------- Eigenes Thema hinzufügen ----------
+
+@app.route("/thema/neu", methods=["POST"])
+@login_erforderlich
+def thema_neu():
+    db = get_db()
+    bezeichnung = request.form.get("neues_thema", "").strip()
+    schueler_id = request.form.get("schueler_id", type=int)
+
+    if schueler_id:
+        schueler = db.execute("SELECT * FROM schueler WHERE id = ?", (schueler_id,)).fetchone()
+        if schueler is not None:
+            pruefe_zugriff(schueler)
+
+    if bezeichnung:
+        db.execute(
+            "INSERT OR IGNORE INTO thema (bezeichnung, kategorie) VALUES (?, 'Eigene Themen')",
+            (bezeichnung,),
+        )
+        db.commit()
+
+    if schueler_id:
+        return redirect(url_for("schueler_detail", schueler_id=schueler_id))
     return redirect(url_for("index"))
 
 

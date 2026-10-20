@@ -23,6 +23,10 @@
         <span class="stat-value">{{ schueler.status|replace('_', ' ') }}</span>
         <span class="stat-label">Status</span>
     </div>
+    <div class="stat-card">
+        <span class="stat-value">{{ schueler.fahrzeug or "–" }}</span>
+        <span class="stat-label">{{ schueler.getriebe or "Fahrzeug" }}</span>
+    </div>
 </div>
 
 <section class="card">
@@ -93,6 +97,15 @@
             </div>
             {% endfor %}
 
+            <button type="button" class="btn btn-small" id="eigenes-thema-toggle">+ Eigenes Thema hinzufügen</button>
+            <div id="eigenes-thema-feld" style="display:none; margin: 10px 0 18px;">
+                <div class="form-row">
+                    <input type="text" id="eigenes-thema-eingabe" placeholder="z. B. Schulterblick" maxlength="80">
+                    <button type="button" class="btn btn-small btn-primary" id="eigenes-thema-speichern">Thema speichern</button>
+                </div>
+                <p class="small muted" style="margin: 6px 0 0;">Das Thema wird gespeichert und steht danach bei „Eigene Themen" zur Auswahl.</p>
+            </div>
+
             <label>Einschätzung
                 <select name="einschaetzung" required>
                     <option value="3">Sicher</option>
@@ -147,5 +160,36 @@
     <p class="muted">Noch keine Lektionen erfasst.</p>
     {% endif %}
 </section>
+
+<script>
+document.getElementById("eigenes-thema-toggle").addEventListener("click", function () {
+    const feld = document.getElementById("eigenes-thema-feld");
+    feld.style.display = feld.style.display === "none" ? "block" : "none";
+    if (feld.style.display === "block") {
+        document.getElementById("eigenes-thema-eingabe").focus();
+    }
+});
+
+function eigenesThemaSpeichern() {
+    const eingabe = document.getElementById("eigenes-thema-eingabe");
+    const bezeichnung = eingabe.value.trim();
+    if (!bezeichnung) return;
+
+    const daten = new FormData();
+    daten.append("neues_thema", bezeichnung);
+    daten.append("schueler_id", "{{ schueler.id }}");
+
+    fetch("{{ url_for('thema_neu') }}", { method: "POST", body: daten })
+        .then(() => window.location.reload());
+}
+
+document.getElementById("eigenes-thema-speichern").addEventListener("click", eigenesThemaSpeichern);
+document.getElementById("eigenes-thema-eingabe").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        eigenesThemaSpeichern();
+    }
+});
+</script>
 
 {% endblock %}

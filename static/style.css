@@ -280,6 +280,7 @@ h2 {
 .stat-card:nth-child(1) { border-top: 3px solid var(--primary); }
 .stat-card:nth-child(2) { border-top: 3px solid var(--accent); }
 .stat-card:nth-child(3) { border-top: 3px solid var(--green); }
+.stat-card:nth-child(4) { border-top: 3px solid var(--accent); }
 
 .stat-value {
     display: block;

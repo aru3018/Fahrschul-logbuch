@@ -27,7 +27,34 @@
     <label>Lernfahrausweis-Nr. (optional)
         <input type="text" name="lernfahrausweis_nr">
     </label>
+    <div class="form-row">
+        <label>Fahrzeug
+            <select name="fahrzeug" id="fahrzeug-auswahl">
+                <option value="">– kein Fahrzeug zugewiesen –</option>
+                {% for name in fahrzeuge %}
+                <option value="{{ name }}">{{ name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>Getriebe
+            <select name="getriebe" id="getriebe-auswahl">
+                <option value="">–</option>
+                <option value="Automatik">Automatik</option>
+                <option value="Geschaltet">Geschaltet</option>
+            </select>
+        </label>
+    </div>
     <button type="submit" class="btn btn-primary">Speichern</button>
 </form>
+
+<script>
+const FAHRZEUG_GETRIEBE = {{ fahrzeuge|tojson }};
+document.getElementById("fahrzeug-auswahl").addEventListener("change", function () {
+    const getriebe = FAHRZEUG_GETRIEBE[this.value];
+    if (getriebe) {
+        document.getElementById("getriebe-auswahl").value = getriebe;
+    }
+});
+</script>
 
 {% endblock %}

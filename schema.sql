@@ -9,7 +9,9 @@ CREATE TABLE IF NOT EXISTS schueler (
     lernfahrausweis_nr TEXT,
     status TEXT NOT NULL DEFAULT 'aktiv',  -- aktiv, pausiert, pruefung_bestanden
     erstellt_am TEXT NOT NULL DEFAULT (datetime('now')),
-    erstellt_von TEXT NOT NULL DEFAULT 'aru'  -- Benutzername des Fahrlehrers, dem der Schüler gehört
+    erstellt_von TEXT NOT NULL DEFAULT 'aru',  -- Benutzername des Fahrlehrers, dem der Schüler gehört
+    fahrzeug TEXT,   -- z. B. "Tesla Model 3"
+    getriebe TEXT    -- "Automatik" oder "Geschaltet"
 );
 
 CREATE TABLE IF NOT EXISTS thema (
