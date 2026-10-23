@@ -27,6 +27,20 @@ CREATE TABLE IF NOT EXISTS lektion (
     dauer_minuten INTEGER NOT NULL,
     notiz TEXT,
     einschaetzung INTEGER NOT NULL,  -- 1 = unsicher, 2 = Übung nötig, 3 = sicher
+    typ TEXT NOT NULL DEFAULT 'normal',  -- 'probe' = Probelektion, 'normal' = normale Lektion
+    erstellt_am TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (schueler_id) REFERENCES schueler(id) ON DELETE CASCADE
+);
+
+-- Geplante nächste Fahrstunden (Termine), optional beim Erfassen einer
+-- normalen Lektion mit angelegt. Grundlage für die Termine-Übersicht.
+CREATE TABLE IF NOT EXISTS termin (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    schueler_id INTEGER NOT NULL,
+    datum TEXT NOT NULL,
+    uhrzeit TEXT,
+    geplante_themen TEXT,
+    erledigt INTEGER NOT NULL DEFAULT 0,
     erstellt_am TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (schueler_id) REFERENCES schueler(id) ON DELETE CASCADE
 );

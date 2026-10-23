@@ -89,6 +89,14 @@ h2 {
     gap: 22px;
 }
 
+/* Grid-/Flex-Kinder schrumpfen sonst nicht unter ihre Inhaltsbreite –
+   das sorgt dafür, dass z. B. eine breite Tabelle intern scrollt
+   (siehe .table-wrap), statt die ganze Seite horizontal aufzudrücken. */
+.grid-2 > *,
+.stat-row > * {
+    min-width: 0;
+}
+
 @media (max-width: 800px) {
     .grid-2 { grid-template-columns: 1fr; }
 }
@@ -443,4 +451,126 @@ h2 {
 
 .logout-link:hover {
     background: rgba(255, 255, 255, 0.15);
+}
+
+/* --- Lektionstyp-Auswahl (Probelektion / Normale Lektion) --- */
+
+.lektion-typ-auswahl {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 18px;
+}
+
+/* --- Block "Nächste Fahrstunde planen" --- */
+
+.naechster-termin-block {
+    background: var(--primary-light);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px 4px;
+    margin: 4px 0 18px;
+}
+
+/* --- Termine / Agenda-Ansicht --- */
+
+.termin-liste {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.termin-eintrag {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: #fdfcff;
+    flex-wrap: wrap;
+}
+
+.termin-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.termin-themen {
+    margin-top: 4px;
+    word-break: break-word;
+}
+
+/* --- Tabellen: horizontal scrollbar statt gestauchtem/gestrecktem Inhalt --- */
+
+.table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+}
+
+.table-wrap .table {
+    min-width: 620px;
+}
+
+.table-wrap .table-compact {
+    min-width: 480px;
+}
+
+/* --- Mobile: durchgängig gleiches, lesbares Layout auf jedem Gerät --- */
+
+@media (max-width: 640px) {
+    .container {
+        padding: 20px 14px 50px;
+    }
+
+    h1 {
+        font-size: 1.25rem;
+    }
+
+    .page-head {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .button-group {
+        flex-wrap: wrap;
+    }
+
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    .stat-row {
+        flex-wrap: wrap;
+    }
+
+    .stat-card {
+        min-width: calc(50% - 8px);
+    }
+
+    .topbar {
+        padding: 10px 16px;
+    }
+
+    .topbar-inner {
+        flex-wrap: wrap;
+        gap: 10px;
+    }
+
+    .brand-logo {
+        height: 36px;
+    }
+
+    .user-area {
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+    }
+
+    .termin-eintrag {
+        flex-direction: column;
+        align-items: stretch;
+    }
 }

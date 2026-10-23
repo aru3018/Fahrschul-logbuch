@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Termine · Start Drive Fahrschule{% endblock %}
+{% block content %}
+
+<div class="page-head">
+    <h1>📅 Nächste Termine</h1>
+    <a href="{{ url_for('index') }}" class="btn btn-ghost">← Übersicht</a>
+</div>
+
+{% if nach_datum %}
+    {% for datum, termine_am_tag in nach_datum.items() %}
+    <section class="card">
+        <h2>
+            {{ datum }}
+            {% if datum == heute %}<span class="badge badge-uebung">Heute</span>{% endif %}
+            {% if datum < heute %}<span class="badge badge-unsicher">überfällig</span>{% endif %}
+        </h2>
+        <div class="termin-liste">
+            {% for t in termine_am_tag %}
+            <div class="termin-eintrag">
+                <div class="termin-info">
+                    <strong><a href="{{ url_for('schueler_detail', schueler_id=t.schueler_id) }}">{{ t.vorname }} {{ t.nachname }}</a></strong>
+                    {% if t.uhrzeit %}<span class="badge badge-aktiv">{{ t.uhrzeit }}</span>{% endif %}
+                    {% if ist_admin %}<span class="muted small">· {{ t.erstellt_von }}</span>{% endif %}
+                    {% if t.geplante_themen %}
+                        <div class="muted small termin-themen">📝 {{ t.geplante_themen }}</div>
+                    {% endif %}
+                </div>
+                <form method="post" action="{{ url_for('termin_erledigt', termin_id=t.id) }}">
+                    <button type="submit" class="btn btn-small">✓ Erledigt</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+{% else %}
+<section class="card">
+    <p class="muted">Keine anstehenden Termine geplant. Beim Erfassen einer normalen Lektion kannst du direkt die nächste Fahrstunde planen.</p>
+</section>
+{% endif %}
+
+{% endblock %}

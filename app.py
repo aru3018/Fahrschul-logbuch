@@ -128,6 +128,10 @@ def init_db():
     if "getriebe" not in spalten:
         db.execute("ALTER TABLE schueler ADD COLUMN getriebe TEXT")
 
+    lektion_spalten = [row[1] for row in db.execute("PRAGMA table_info(lektion)").fetchall()]
+    if "typ" not in lektion_spalten:
+        db.execute("ALTER TABLE lektion ADD COLUMN typ TEXT NOT NULL DEFAULT 'normal'")
+
     db.commit()
     db.close()
     if first_run:
@@ -210,13 +214,16 @@ def schueler_detail(schueler_id):
         notiz = request.form.get("notiz", "").strip()
         einschaetzung = int(request.form["einschaetzung"])
         thema_ids = request.form.getlist("themen")
+        lektion_typ = request.form.get("lektion_typ", "normal")
+        if lektion_typ not in ("probe", "normal"):
+            lektion_typ = "normal"
 
         cur = db.execute(
             """
-            INSERT INTO lektion (schueler_id, datum, dauer_minuten, notiz, einschaetzung)
-            VALUES (?, ?, ?, ?, ?)
+            INSERT INTO lektion (schueler_id, datum, dauer_minuten, notiz, einschaetzung, typ)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
-            (schueler_id, datum, dauer, notiz, einschaetzung),
+            (schueler_id, datum, dauer, notiz, einschaetzung, lektion_typ),
         )
         lektion_id = cur.lastrowid
         for tid in thema_ids:
@@ -224,6 +231,23 @@ def schueler_detail(schueler_id):
                 "INSERT INTO lektion_thema (lektion_id, thema_id) VALUES (?, ?)",
                 (lektion_id, tid),
             )
+
+        # Bei einer normalen Lektion kann direkt der nächste Termin geplant werden.
+        naechster_termin_datum = request.form.get("naechster_termin_datum", "").strip()
+        if lektion_typ == "normal" and naechster_termin_datum:
+            db.execute(
+                """
+                INSERT INTO termin (schueler_id, datum, uhrzeit, geplante_themen)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    schueler_id,
+                    naechster_termin_datum,
+                    request.form.get("naechster_termin_zeit", "").strip(),
+                    request.form.get("naechster_termin_themen", "").strip(),
+                ),
+            )
+
         db.commit()
         return redirect(url_for("schueler_detail", schueler_id=schueler_id))
 
@@ -267,6 +291,15 @@ def schueler_detail(schueler_id):
         (schueler_id, schueler_id),
     ).fetchall()
 
+    offene_termine = db.execute(
+        """
+        SELECT * FROM termin
+        WHERE schueler_id = ? AND erledigt = 0
+        ORDER BY datum, uhrzeit
+        """,
+        (schueler_id,),
+    ).fetchall()
+
     total_minuten = sum(l["dauer_minuten"] for l in lektionen)
     heute = datetime.now().strftime("%Y-%m-%d")
 
@@ -281,6 +314,7 @@ def schueler_detail(schueler_id):
         lektionen=lektionen,
         themen=themen,
         fortschritt=fortschritt,
+        offene_termine=offene_termine,
         total_minuten=total_minuten,
         heute=heute,
         anzahl_themen_total=anzahl_themen_total,
@@ -372,6 +406,64 @@ def thema_neu():
     if schueler_id:
         return redirect(url_for("schueler_detail", schueler_id=schueler_id))
     return redirect(url_for("index"))
+
+
+# ---------- Termine (nächste Fahrstunden) ----------
+
+@app.route("/termine")
+@login_erforderlich
+def termine():
+    db = get_db()
+    ist_admin = session.get("rolle") == "admin"
+
+    basis_query = """
+        SELECT t.*, s.vorname, s.nachname, s.erstellt_von
+        FROM termin t
+        JOIN schueler s ON s.id = t.schueler_id
+        WHERE t.erledigt = 0
+        {und_filter}
+        ORDER BY t.datum, t.uhrzeit
+    """
+    if ist_admin:
+        alle_termine = db.execute(basis_query.format(und_filter="")).fetchall()
+    else:
+        alle_termine = db.execute(
+            basis_query.format(und_filter="AND s.erstellt_von = ?"),
+            (session["benutzer"],),
+        ).fetchall()
+
+    # Für die Agenda-Ansicht nach Datum gruppieren
+    nach_datum = {}
+    for t in alle_termine:
+        nach_datum.setdefault(t["datum"], []).append(t)
+
+    heute = datetime.now().strftime("%Y-%m-%d")
+
+    return render_template(
+        "termine.html",
+        nach_datum=nach_datum,
+        ist_admin=ist_admin,
+        heute=heute,
+    )
+
+
+@app.route("/termin/<int:termin_id>/erledigt", methods=["POST"])
+@login_erforderlich
+def termin_erledigt(termin_id):
+    db = get_db()
+    row = db.execute(
+        """
+        SELECT s.erstellt_von
+        FROM termin t JOIN schueler s ON s.id = t.schueler_id
+        WHERE t.id = ?
+        """,
+        (termin_id,),
+    ).fetchone()
+    if row is not None:
+        pruefe_zugriff(row)
+        db.execute("UPDATE termin SET erledigt = 1 WHERE id = ?", (termin_id,))
+        db.commit()
+    return redirect(url_for("termine"))
 
 
 # ---------- Admin-Dashboard ----------

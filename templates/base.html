@@ -18,6 +18,7 @@
                     <a href="{{ url_for('admin_dashboard') }}" class="logout-link">📊 Dashboard</a>
                     <a href="{{ url_for('index') }}" class="logout-link">Alle Schüler</a>
                 {% endif %}
+                <a href="{{ url_for('termine') }}" class="logout-link">📅 Termine</a>
                 <span class="user-name">{{ session.get('anzeigename') }}</span>
                 <a href="{{ url_for('logout') }}" class="logout-link">Abmelden</a>
             </div>

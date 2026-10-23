@@ -39,9 +39,32 @@
     </div>
 </section>
 
+{% if offene_termine %}
+<section class="card">
+    <h2>📅 Geplante nächste Termine</h2>
+    <div class="termin-liste">
+        {% for t in offene_termine %}
+        <div class="termin-eintrag">
+            <div class="termin-info">
+                <strong>{{ t.datum }}</strong>
+                {% if t.uhrzeit %}<span class="badge badge-aktiv">{{ t.uhrzeit }}</span>{% endif %}
+                {% if t.geplante_themen %}
+                    <div class="muted small termin-themen">📝 {{ t.geplante_themen }}</div>
+                {% endif %}
+            </div>
+            <form method="post" action="{{ url_for('termin_erledigt', termin_id=t.id) }}">
+                <button type="submit" class="btn btn-small">✓ Erledigt</button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
 <div class="grid-2">
     <section class="card">
         <h2>Fortschritt nach Thema</h2>
+        <div class="table-wrap">
         <table class="table table-compact">
             <thead>
                 <tr><th>Thema</th><th>Geübt</th><th>Letzte Einschätzung</th></tr>
@@ -68,11 +91,24 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </section>
 
     <section class="card">
         <h2>Neue Lektion erfassen</h2>
         <form method="post" class="form">
+            <label>Lektionstyp</label>
+            <div class="lektion-typ-auswahl">
+                <label class="checkbox-item">
+                    <input type="radio" name="lektion_typ" value="probe">
+                    Probelektion
+                </label>
+                <label class="checkbox-item">
+                    <input type="radio" name="lektion_typ" value="normal" checked>
+                    Normale Lektion
+                </label>
+            </div>
+
             <div class="form-row">
                 <label>Datum
                     <input type="date" name="datum" value="{{ heute }}" required>
@@ -118,6 +154,21 @@
                 <textarea name="notiz" rows="3" placeholder="z. B. Rückwärtsparkieren noch unsicher, braucht mehr Übung im Kreisverkehr …"></textarea>
             </label>
 
+            <div id="naechster-termin-block" class="naechster-termin-block">
+                <label>Nächste Fahrstunde planen (optional)</label>
+                <div class="form-row">
+                    <label>Datum
+                        <input type="date" name="naechster_termin_datum">
+                    </label>
+                    <label>Uhrzeit (optional)
+                        <input type="time" name="naechster_termin_zeit">
+                    </label>
+                </div>
+                <label>Was beim nächsten Mal angeschaut wird
+                    <textarea name="naechster_termin_themen" rows="2" placeholder="z. B. Autobahn üben, Rückwärtsparkieren vertiefen …"></textarea>
+                </label>
+            </div>
+
             <button type="submit" class="btn btn-primary">Lektion speichern</button>
         </form>
     </section>
@@ -126,14 +177,16 @@
 <section class="card">
     <h2>Verlauf</h2>
     {% if lektionen %}
+    <div class="table-wrap">
     <table class="table">
         <thead>
-            <tr><th>Datum</th><th>Dauer</th><th>Themen</th><th>Einschätzung</th><th>Notiz</th><th></th></tr>
+            <tr><th>Datum</th><th>Typ</th><th>Dauer</th><th>Themen</th><th>Einschätzung</th><th>Notiz</th><th></th></tr>
         </thead>
         <tbody>
             {% for l in lektionen %}
             <tr>
                 <td>{{ l.datum }}</td>
+                <td>{% if l.typ == 'probe' %}<span class="badge badge-pausiert">Probe</span>{% else %}<span class="muted small">Normal</span>{% endif %}</td>
                 <td>{{ l.dauer_minuten }} min</td>
                 <td>{{ l.themen_namen or "–" }}</td>
                 <td>
@@ -156,6 +209,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
     {% else %}
     <p class="muted">Noch keine Lektionen erfasst.</p>
     {% endif %}
@@ -190,6 +244,16 @@ document.getElementById("eigenes-thema-eingabe").addEventListener("keydown", fun
         eigenesThemaSpeichern();
     }
 });
+
+// Terminplanung nur bei "Normale Lektion" anzeigen
+function terminBlockAktualisieren() {
+    const normal = document.querySelector('input[name="lektion_typ"][value="normal"]').checked;
+    document.getElementById("naechster-termin-block").style.display = normal ? "block" : "none";
+}
+document.querySelectorAll('input[name="lektion_typ"]').forEach(function (radio) {
+    radio.addEventListener("change", terminBlockAktualisieren);
+});
+terminBlockAktualisieren();
 </script>
 
 {% endblock %}

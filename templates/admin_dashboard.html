@@ -25,6 +25,7 @@
 <div class="grid-2">
     <section class="card">
         <h2>👥 Fahrlehrer-Übersicht</h2>
+        <div class="table-wrap">
         <table class="table table-compact">
             <thead>
                 <tr><th>Fahrlehrer</th><th>Schüler</th><th>Lektionen</th><th>Stunden</th></tr>
@@ -42,10 +43,12 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
     </section>
 
     <section class="card">
         <h2>🔑 Benutzerkonten</h2>
+        <div class="table-wrap">
         <table class="table table-compact">
             <thead>
                 <tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th></tr>
@@ -66,6 +69,7 @@
                 {% endfor %}
             </tbody>
         </table>
+        </div>
         <p class="small muted" style="margin-top:12px; margin-bottom:0;">
             Konten sind im Prototyp fest hinterlegt (noch keine Benutzerverwaltung über die Oberfläche).
         </p>
@@ -75,6 +79,7 @@
 <section class="card">
     <h2>📋 Alle Schüler (fahrlehrerübergreifend)</h2>
     {% if alle_schueler %}
+    <div class="table-wrap">
     <table class="table">
         <thead>
             <tr><th>Name</th><th>Fahrlehrer</th><th>Status</th><th>Lektionen</th><th>Stunden</th><th></th></tr>
@@ -92,6 +97,7 @@
             {% endfor %}
         </tbody>
     </table>
+    </div>
     {% else %}
     <p class="muted">Noch keine Schüler im System.</p>
     {% endif %}
