@@ -3,9 +3,14 @@
 {% block content %}
 
 <div class="page-head">
-    <h1>{{ schueler.vorname }} {{ schueler.nachname }}</h1>
+    <h1>{{ schueler.vorname }} {{ schueler.nachname }} {% if schueler.archiviert %}<span class="badge badge-pausiert">archiviert</span>{% endif %}</h1>
     <div class="button-group">
+        <a href="{{ url_for('schueler_pdf', schueler_id=schueler.id) }}" class="btn btn-ghost">📄 PDF-Bericht</a>
         <a href="{{ url_for('schueler_bearbeiten', schueler_id=schueler.id) }}" class="btn btn-ghost">✎ Bearbeiten</a>
+        <form method="post" action="{{ url_for('schueler_archivieren', schueler_id=schueler.id) }}" style="display:inline;"
+              onsubmit="return confirm('{{ 'Schüler wieder aktivieren?' if schueler.archiviert else 'Schüler archivieren? Er verschwindet aus der normalen Übersicht, bleibt aber erhalten.' }}');">
+            <button type="submit" class="btn btn-ghost">{% if schueler.archiviert %}↩ Reaktivieren{% else %}🗄 Archivieren{% endif %}</button>
+        </form>
         <a href="{{ url_for('index') }}" class="btn btn-ghost">← Übersicht</a>
     </div>
 </div>
@@ -27,7 +32,27 @@
         <span class="stat-value">{{ schueler.fahrzeug or "–" }}</span>
         <span class="stat-label">{{ schueler.getriebe or "Fahrzeug" }}</span>
     </div>
+    <div class="stat-card">
+        <span class="stat-value">CHF {{ "%.2f"|format(offener_betrag) }}</span>
+        <span class="stat-label">Offener Betrag {% if total_betrag %}(von CHF {{ "%.2f"|format(total_betrag) }}){% endif %}</span>
+    </div>
 </div>
+
+{% if schueler.theorie_pruefung_datum or schueler.praxis_pruefung_datum %}
+<section class="card">
+    <h2>🎓 Prüfungstermine</h2>
+    <div class="stat-row">
+        <div class="stat-card">
+            <span class="stat-value">{{ schueler.theorie_pruefung_datum or "–" }}</span>
+            <span class="stat-label">Theorieprüfung</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ schueler.praxis_pruefung_datum or "–" }}</span>
+            <span class="stat-label">Praktische Prüfung</span>
+        </div>
+    </div>
+</section>
+{% endif %}
 
 <section class="card">
     <h2>Gesamtfortschritt</h2>
@@ -154,6 +179,16 @@
                 <textarea name="notiz" rows="3" placeholder="z. B. Rückwärtsparkieren noch unsicher, braucht mehr Übung im Kreisverkehr …"></textarea>
             </label>
 
+            <div class="form-row">
+                <label>Preis (CHF, optional)
+                    <input type="number" name="preis" step="0.05" min="0" placeholder="0.00">
+                </label>
+                <label class="checkbox-item" style="margin-top: 22px;">
+                    <input type="checkbox" name="bezahlt">
+                    Bereits bezahlt
+                </label>
+            </div>
+
             <div id="naechster-termin-block" class="naechster-termin-block">
                 <label>Nächste Fahrstunde planen (optional)</label>
                 <div class="form-row">
@@ -180,7 +215,7 @@
     <div class="table-wrap">
     <table class="table">
         <thead>
-            <tr><th>Datum</th><th>Typ</th><th>Dauer</th><th>Themen</th><th>Einschätzung</th><th>Notiz</th><th></th></tr>
+            <tr><th>Datum</th><th>Typ</th><th>Dauer</th><th>Themen</th><th>Einschätzung</th><th>Notiz</th><th>Betrag</th><th></th></tr>
         </thead>
         <tbody>
             {% for l in lektionen %}
@@ -199,6 +234,18 @@
                     {% endif %}
                 </td>
                 <td class="muted">{{ l.notiz or "–" }}</td>
+                <td>
+                    {% if l.preis %}
+                    CHF {{ "%.2f"|format(l.preis) }}
+                    <form method="post" action="{{ url_for('lektion_bezahlt_umschalten', lektion_id=l.id) }}" style="display:inline;">
+                        <button type="submit" class="badge {{ 'badge-sicher' if l.bezahlt else 'badge-unsicher' }}" style="border:none; cursor:pointer;">
+                            {{ 'bezahlt' if l.bezahlt else 'offen' }}
+                        </button>
+                    </form>
+                    {% else %}
+                    <span class="muted">–</span>
+                    {% endif %}
+                </td>
                 <td>
                     <form method="post" action="{{ url_for('lektion_loeschen', lektion_id=l.id) }}"
                           onsubmit="return confirm('Diese Lektion wirklich löschen?');">

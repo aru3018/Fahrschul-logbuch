@@ -10,8 +10,18 @@ CREATE TABLE IF NOT EXISTS schueler (
     status TEXT NOT NULL DEFAULT 'aktiv',  -- aktiv, pausiert, pruefung_bestanden
     erstellt_am TEXT NOT NULL DEFAULT (datetime('now')),
     erstellt_von TEXT NOT NULL DEFAULT 'aru',  -- Benutzername des Fahrlehrers, dem der Schüler gehört
-    fahrzeug TEXT,   -- z. B. "Tesla Model 3"
-    getriebe TEXT    -- "Automatik" oder "Geschaltet"
+    fahrzeug TEXT,   -- z. B. "VW Golf GTI"
+    getriebe TEXT,   -- "Automatik" oder "Geschaltet"
+    theorie_pruefung_datum TEXT,   -- geplantes/erfolgtes Datum der Theorieprüfung
+    praxis_pruefung_datum TEXT,    -- geplantes/erfolgtes Datum der praktischen Prüfung
+    archiviert INTEGER NOT NULL DEFAULT 0  -- 1 = archiviert (Soft-Delete), 0 = aktiv sichtbar
+);
+
+-- Fahrzeugflotte, über das Admin-UI verwaltbar
+CREATE TABLE IF NOT EXISTS fahrzeug (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    getriebe TEXT NOT NULL  -- "Automatik" oder "Geschaltet"
 );
 
 CREATE TABLE IF NOT EXISTS thema (
@@ -28,6 +38,8 @@ CREATE TABLE IF NOT EXISTS lektion (
     notiz TEXT,
     einschaetzung INTEGER NOT NULL,  -- 1 = unsicher, 2 = Übung nötig, 3 = sicher
     typ TEXT NOT NULL DEFAULT 'normal',  -- 'probe' = Probelektion, 'normal' = normale Lektion
+    preis REAL NOT NULL DEFAULT 0,       -- Betrag in CHF für diese Lektion
+    bezahlt INTEGER NOT NULL DEFAULT 0,  -- 1 = bezahlt, 0 = offen
     erstellt_am TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (schueler_id) REFERENCES schueler(id) ON DELETE CASCADE
 );
@@ -43,6 +55,15 @@ CREATE TABLE IF NOT EXISTS termin (
     erledigt INTEGER NOT NULL DEFAULT 0,
     erstellt_am TEXT NOT NULL DEFAULT (datetime('now')),
     FOREIGN KEY (schueler_id) REFERENCES schueler(id) ON DELETE CASCADE
+);
+
+-- Protokoll wichtiger Aktionen, nur für den Admin einsehbar
+CREATE TABLE IF NOT EXISTS audit_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    zeitpunkt TEXT NOT NULL DEFAULT (datetime('now')),
+    benutzer TEXT NOT NULL,
+    aktion TEXT NOT NULL,
+    details TEXT
 );
 
 CREATE TABLE IF NOT EXISTS lektion_thema (

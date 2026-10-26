@@ -1,0 +1,17 @@
+{
+    "name": "Fahrschule Bern — Logbuch",
+    "short_name": "Fahrschule Bern",
+    "description": "Digitales Fahrstunden-Logbuch für die Fahrschule Bern",
+    "start_url": "/",
+    "scope": "/",
+    "display": "standalone",
+    "background_color": "#f4f5f9",
+    "theme_color": "#243d84",
+    "lang": "de-CH",
+    "icons": [
+        { "src": "img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+        { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+        { "src": "img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+        { "src": "img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    ]
+}

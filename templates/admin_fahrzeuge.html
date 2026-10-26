@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block title %}Fahrzeuge · Fahrschule Bern{% endblock %}
+{% block content %}
+
+<div class="page-head">
+    <h1>🚗 Fahrzeugverwaltung</h1>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-ghost">← Dashboard</a>
+</div>
+
+<div class="grid-2">
+    <section class="card">
+        <h2>Aktuelle Flotte</h2>
+        {% if fahrzeuge %}
+        <div class="table-wrap">
+        <table class="table table-compact">
+            <thead>
+                <tr><th>Name</th><th>Getriebe</th><th></th></tr>
+            </thead>
+            <tbody>
+                {% for f in fahrzeuge %}
+                <tr>
+                    <td>{{ f.name }}</td>
+                    <td>{{ f.getriebe }}</td>
+                    <td>
+                        <form method="post" action="{{ url_for('admin_fahrzeug_loeschen', fahrzeug_id=f.id) }}"
+                              onsubmit="return confirm('Fahrzeug {{ f.name }} entfernen? Schüler mit diesem Fahrzeug verlieren die Zuweisung.');">
+                            <button type="submit" class="btn btn-small btn-danger">Entfernen</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="muted">Keine Fahrzeuge erfasst.</p>
+        {% endif %}
+    </section>
+
+    <section class="card">
+        <h2>Neues Fahrzeug</h2>
+        <form method="post" class="form">
+            <label>Name
+                <input type="text" name="name" placeholder="z. B. VW Passat" required>
+            </label>
+            <label>Getriebe
+                <select name="getriebe" required>
+                    <option value="Automatik">Automatik</option>
+                    <option value="Geschaltet">Geschaltet</option>
+                </select>
+            </label>
+            <button type="submit" class="btn btn-primary">Hinzufügen</button>
+        </form>
+    </section>
+</div>
+
+{% endblock %}

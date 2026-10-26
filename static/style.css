@@ -357,10 +357,18 @@ h2 {
 
 /* --- Suchfeld auf der Übersichtsseite --- */
 
-.suchfeld {
-    width: 100%;
-    padding: 12px 16px;
+.such-leiste {
+    display: flex;
+    align-items: center;
+    gap: 12px;
     margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.suchfeld {
+    flex: 1 1 260px;
+    min-width: 0;
+    padding: 12px 16px;
     border: 1.5px solid var(--border);
     border-radius: 10px;
     font-size: 0.95rem;
@@ -371,6 +379,15 @@ h2 {
 .suchfeld:focus {
     outline: none;
     border-color: var(--primary);
+}
+
+.archiv-toggle {
+    white-space: nowrap;
+    margin: 0;
+}
+
+.zeile-archiviert {
+    opacity: 0.55;
 }
 
 /* --- Login-Seite --- */
@@ -510,6 +527,54 @@ h2 {
     word-break: break-word;
 }
 
+.termin-erledigt {
+    opacity: 0.55;
+}
+
+/* --- Termine: Listen-/Wochenansicht-Umschalter --- */
+
+.ansicht-umschalter {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.wochen-nav {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+}
+
+.wochen-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 12px;
+}
+
+.wochen-tag {
+    min-width: 0;
+    padding: 14px;
+}
+
+.wochen-tag h3 {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.wochen-tag-heute {
+    border: 1.5px solid var(--primary);
+}
+
+.wochen-tag .termin-eintrag {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 10px;
+}
+
 /* --- Tabellen: horizontal scrollbar statt gestauchtem/gestrecktem Inhalt --- */
 
 .table-wrap {
@@ -578,6 +643,15 @@ h2 {
     }
 
     .termin-eintrag {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .wochen-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .such-leiste {
         flex-direction: column;
         align-items: stretch;
     }

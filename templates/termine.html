@@ -7,6 +7,53 @@
     <a href="{{ url_for('index') }}" class="btn btn-ghost">← Übersicht</a>
 </div>
 
+<div class="ansicht-umschalter">
+    <a href="{{ url_for('termine', ansicht='liste') }}" class="btn btn-small {{ 'btn-primary' if ansicht == 'liste' else 'btn-ghost' }}">📋 Liste</a>
+    <a href="{{ url_for('termine', ansicht='woche') }}" class="btn btn-small {{ 'btn-primary' if ansicht == 'woche' else 'btn-ghost' }}">🗓 Woche</a>
+</div>
+
+{% if ansicht == 'woche' %}
+
+<div class="wochen-nav">
+    <a href="{{ url_for('termine', ansicht='woche', start=woche_vorher) }}" class="btn btn-small btn-ghost">← Vorherige Woche</a>
+    <a href="{{ url_for('termine', ansicht='woche') }}" class="btn btn-small btn-ghost">Diese Woche</a>
+    <a href="{{ url_for('termine', ansicht='woche', start=woche_danach) }}" class="btn btn-small btn-ghost">Nächste Woche →</a>
+</div>
+
+<div class="wochen-grid">
+    {% for tag in woche_tage %}
+    <section class="card wochen-tag {% if tag.ist_heute %}wochen-tag-heute{% endif %}">
+        <h3>{{ tag.label }} {% if tag.ist_heute %}<span class="badge badge-aktiv">Heute</span>{% endif %}</h3>
+        {% if tag.termine %}
+        <div class="termin-liste">
+            {% for t in tag.termine %}
+            <div class="termin-eintrag {% if t.erledigt %}termin-erledigt{% endif %}">
+                <div class="termin-info">
+                    <strong><a href="{{ url_for('schueler_detail', schueler_id=t.schueler_id) }}">{{ t.vorname }} {{ t.nachname }}</a></strong>
+                    {% if t.uhrzeit %}<span class="badge badge-aktiv">{{ t.uhrzeit }}</span>{% endif %}
+                    {% if t.erledigt %}<span class="badge badge-sicher">erledigt</span>{% endif %}
+                    {% if ist_admin %}<span class="muted small">· {{ t.erstellt_von }}</span>{% endif %}
+                    {% if t.geplante_themen %}
+                        <div class="muted small termin-themen">📝 {{ t.geplante_themen }}</div>
+                    {% endif %}
+                </div>
+                {% if not t.erledigt %}
+                <form method="post" action="{{ url_for('termin_erledigt', termin_id=t.id) }}">
+                    <button type="submit" class="btn btn-small">✓</button>
+                </form>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="muted small">Keine Termine.</p>
+        {% endif %}
+    </section>
+    {% endfor %}
+</div>
+
+{% else %}
+
 {% if nach_datum %}
     {% for datum, termine_am_tag in nach_datum.items() %}
     <section class="card">
@@ -38,6 +85,8 @@
 <section class="card">
     <p class="muted">Keine anstehenden Termine geplant. Beim Erfassen einer normalen Lektion kannst du direkt die nächste Fahrstunde planen.</p>
 </section>
+{% endif %}
+
 {% endif %}
 
 {% endblock %}

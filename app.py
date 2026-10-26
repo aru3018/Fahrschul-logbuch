@@ -10,13 +10,20 @@ Start:
 Dann im Browser: http://localhost:5000
 """
 
+import io
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from pathlib import Path
 
-from flask import Flask, render_template, request, redirect, url_for, g, session, abort
+from flask import Flask, render_template, request, redirect, url_for, g, session, abort, send_file
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 BASE_DIR = Path(__file__).parent
 DB_PATH = BASE_DIR / "logbuch.db"
@@ -30,9 +37,9 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-key-bitte-in-produktion
 
 # ---------- Login (Prototyp: feste Konten) ----------
 
-# Fahrzeugflotte: Name -> Standard-Getriebeart (wird beim Anlegen/Bearbeiten
-# automatisch vorausgewählt, lässt sich aber von Hand übersteuern).
-FAHRZEUGE = {
+# Start-Fuhrpark, mit dem die "fahrzeug"-Tabelle beim ersten Start befüllt
+# wird. Danach läuft die Verwaltung über das Admin-UI (/admin/fahrzeuge).
+FAHRZEUGE_STANDARD = {
     "VW Golf GTI": "Automatik",
     "VW Golf": "Automatik",
     "Seat": "Geschaltet",
@@ -75,6 +82,24 @@ def pruefe_zugriff(schueler):
     weder selbst erstellt hat noch Administrator ist."""
     if session.get("rolle") != "admin" and schueler["erstellt_von"] != session.get("benutzer"):
         abort(403)
+
+
+def hole_fahrzeuge(db):
+    """Aktuelle Fahrzeugflotte aus der DB als {Name: Getriebeart}-Dict,
+    damit bestehende Templates (Formulare, JS-Auto-Select) unverändert
+    funktionieren."""
+    return {
+        row["name"]: row["getriebe"]
+        for row in db.execute("SELECT name, getriebe FROM fahrzeug ORDER BY name").fetchall()
+    }
+
+
+def log_aktion(db, aktion, details=""):
+    """Schreibt einen Eintrag ins Audit-Log (nur für den Admin einsehbar)."""
+    db.execute(
+        "INSERT INTO audit_log (benutzer, aktion, details) VALUES (?, ?, ?)",
+        (session.get("benutzer", "system"), aktion, details),
+    )
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -133,10 +158,24 @@ def init_db():
         db.execute("ALTER TABLE schueler ADD COLUMN fahrzeug TEXT")
     if "getriebe" not in spalten:
         db.execute("ALTER TABLE schueler ADD COLUMN getriebe TEXT")
+    if "theorie_pruefung_datum" not in spalten:
+        db.execute("ALTER TABLE schueler ADD COLUMN theorie_pruefung_datum TEXT")
+    if "praxis_pruefung_datum" not in spalten:
+        db.execute("ALTER TABLE schueler ADD COLUMN praxis_pruefung_datum TEXT")
+    if "archiviert" not in spalten:
+        db.execute("ALTER TABLE schueler ADD COLUMN archiviert INTEGER NOT NULL DEFAULT 0")
 
     lektion_spalten = [row[1] for row in db.execute("PRAGMA table_info(lektion)").fetchall()]
     if "typ" not in lektion_spalten:
         db.execute("ALTER TABLE lektion ADD COLUMN typ TEXT NOT NULL DEFAULT 'normal'")
+    if "preis" not in lektion_spalten:
+        db.execute("ALTER TABLE lektion ADD COLUMN preis REAL NOT NULL DEFAULT 0")
+    if "bezahlt" not in lektion_spalten:
+        db.execute("ALTER TABLE lektion ADD COLUMN bezahlt INTEGER NOT NULL DEFAULT 0")
+
+    # Fuhrpark-Tabelle beim ersten Start mit dem Standard-Fuhrpark befüllen.
+    for name, getriebe in FAHRZEUGE_STANDARD.items():
+        db.execute("INSERT OR IGNORE INTO fahrzeug (name, getriebe) VALUES (?, ?)", (name, getriebe))
 
     # Konto "Viji" wurde durch "Pesche" ersetzt – bisherige Schüler von Viji
     # werden automatisch Pesche zugeordnet, statt verwaist zu sein.
@@ -163,26 +202,45 @@ def init_db():
 def index():
     db = get_db()
     ist_admin = session.get("rolle") == "admin"
+    suche = request.args.get("q", "").strip()
+    zeige_archiviert = request.args.get("archiviert") == "1"
 
-    basis_query = """
+    bedingungen = []
+    parameter = []
+
+    if not ist_admin:
+        bedingungen.append("s.erstellt_von = ?")
+        parameter.append(session["benutzer"])
+
+    if not zeige_archiviert:
+        bedingungen.append("s.archiviert = 0")
+
+    if suche:
+        bedingungen.append("(s.vorname LIKE ? OR s.nachname LIKE ?)")
+        parameter.extend([f"%{suche}%", f"%{suche}%"])
+
+    where = ("WHERE " + " AND ".join(bedingungen)) if bedingungen else ""
+
+    basis_query = f"""
         SELECT s.*,
                COUNT(l.id) AS anzahl_lektionen,
-               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten
+               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten,
+               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0) AS offener_betrag
         FROM schueler s
         LEFT JOIN lektion l ON l.schueler_id = s.id
         {where}
         GROUP BY s.id
         ORDER BY s.nachname, s.vorname
     """
-    if ist_admin:
-        schueler = db.execute(basis_query.format(where="")).fetchall()
-    else:
-        schueler = db.execute(
-            basis_query.format(where="WHERE s.erstellt_von = ?"),
-            (session["benutzer"],),
-        ).fetchall()
+    schueler = db.execute(basis_query, parameter).fetchall()
 
-    return render_template("index.html", schueler=schueler, ist_admin=ist_admin)
+    return render_template(
+        "index.html",
+        schueler=schueler,
+        ist_admin=ist_admin,
+        suche=suche,
+        zeige_archiviert=zeige_archiviert,
+    )
 
 
 # ---------- Schüler anlegen ----------
@@ -191,10 +249,9 @@ def index():
 @login_erforderlich
 def schueler_neu():
     ist_admin = session.get("rolle") == "admin"
+    db = get_db()
 
     if request.method == "POST":
-        db = get_db()
-
         # Admins können den Schüler direkt einem Fahrlehrer zuteilen,
         # normale Fahrlehrer legen den Schüler immer bei sich selbst an.
         erstellt_von = session["benutzer"]
@@ -203,11 +260,12 @@ def schueler_neu():
             if gewaehlt in FAHRLEHRER_LISTE:
                 erstellt_von = gewaehlt
 
-        db.execute(
+        cur = db.execute(
             """
             INSERT INTO schueler
-                (vorname, nachname, email, telefon, lernfahrausweis_nr, status, erstellt_von, fahrzeug, getriebe)
-            VALUES (?, ?, ?, ?, ?, 'aktiv', ?, ?, ?)
+                (vorname, nachname, email, telefon, lernfahrausweis_nr, status, erstellt_von,
+                 fahrzeug, getriebe, theorie_pruefung_datum, praxis_pruefung_datum)
+            VALUES (?, ?, ?, ?, ?, 'aktiv', ?, ?, ?, ?, ?)
             """,
             (
                 request.form["vorname"].strip(),
@@ -218,13 +276,19 @@ def schueler_neu():
                 erstellt_von,
                 request.form.get("fahrzeug", "").strip(),
                 request.form.get("getriebe", "").strip(),
+                request.form.get("theorie_pruefung_datum", "").strip() or None,
+                request.form.get("praxis_pruefung_datum", "").strip() or None,
             ),
+        )
+        log_aktion(
+            db, "Schüler erstellt",
+            f"{request.form['vorname'].strip()} {request.form['nachname'].strip()} (ID {cur.lastrowid}), Fahrlehrer: {erstellt_von}",
         )
         db.commit()
         return redirect(url_for("admin_dashboard") if ist_admin else url_for("index"))
     return render_template(
         "schueler_neu.html",
-        fahrzeuge=FAHRZEUGE,
+        fahrzeuge=hole_fahrzeuge(db),
         ist_admin=ist_admin,
         fahrlehrer_liste=FAHRLEHRER_LISTE,
     )
@@ -252,14 +316,24 @@ def schueler_detail(schueler_id):
         if lektion_typ not in ("probe", "normal"):
             lektion_typ = "normal"
 
+        try:
+            preis = float(request.form.get("preis", "0").replace(",", ".") or 0)
+        except ValueError:
+            preis = 0
+        bezahlt = 1 if request.form.get("bezahlt") else 0
+
         cur = db.execute(
             """
-            INSERT INTO lektion (schueler_id, datum, dauer_minuten, notiz, einschaetzung, typ)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO lektion (schueler_id, datum, dauer_minuten, notiz, einschaetzung, typ, preis, bezahlt)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (schueler_id, datum, dauer, notiz, einschaetzung, lektion_typ),
+            (schueler_id, datum, dauer, notiz, einschaetzung, lektion_typ, preis, bezahlt),
         )
         lektion_id = cur.lastrowid
+        log_aktion(
+            db, "Lektion erfasst",
+            f"Schüler-ID {schueler_id}, {datum}, {dauer} Min., {lektion_typ}",
+        )
         for tid in thema_ids:
             db.execute(
                 "INSERT INTO lektion_thema (lektion_id, thema_id) VALUES (?, ?)",
@@ -342,6 +416,9 @@ def schueler_detail(schueler_id):
         round(100 * anzahl_themen_geuebt / anzahl_themen_total) if anzahl_themen_total else 0
     )
 
+    total_betrag = sum(l["preis"] for l in lektionen)
+    offener_betrag = sum(l["preis"] for l in lektionen if not l["bezahlt"])
+
     return render_template(
         "schueler_detail.html",
         schueler=schueler,
@@ -354,6 +431,8 @@ def schueler_detail(schueler_id):
         anzahl_themen_total=anzahl_themen_total,
         anzahl_themen_geuebt=anzahl_themen_geuebt,
         fortschritt_prozent=fortschritt_prozent,
+        total_betrag=total_betrag,
+        offener_betrag=offener_betrag,
     )
 
 
@@ -382,7 +461,7 @@ def schueler_bearbeiten(schueler_id):
             UPDATE schueler
             SET vorname = ?, nachname = ?, email = ?, telefon = ?,
                 lernfahrausweis_nr = ?, status = ?, fahrzeug = ?, getriebe = ?,
-                erstellt_von = ?
+                erstellt_von = ?, theorie_pruefung_datum = ?, praxis_pruefung_datum = ?
             WHERE id = ?
             """,
             (
@@ -395,16 +474,19 @@ def schueler_bearbeiten(schueler_id):
                 request.form.get("fahrzeug", "").strip(),
                 request.form.get("getriebe", "").strip(),
                 erstellt_von,
+                request.form.get("theorie_pruefung_datum", "").strip() or None,
+                request.form.get("praxis_pruefung_datum", "").strip() or None,
                 schueler_id,
             ),
         )
+        log_aktion(db, "Schüler bearbeitet", f"{schueler['vorname']} {schueler['nachname']} (ID {schueler_id})")
         db.commit()
         return redirect(url_for("schueler_detail", schueler_id=schueler_id))
 
     return render_template(
         "schueler_bearbeiten.html",
         schueler=schueler,
-        fahrzeuge=FAHRZEUGE,
+        fahrzeuge=hole_fahrzeuge(db),
         ist_admin=ist_admin,
         fahrlehrer_liste=FAHRLEHRER_LISTE,
     )
@@ -427,9 +509,167 @@ def lektion_loeschen(lektion_id):
     if row is not None:
         pruefe_zugriff(row)
         db.execute("DELETE FROM lektion WHERE id = ?", (lektion_id,))
+        log_aktion(db, "Lektion gelöscht", f"Lektion-ID {lektion_id}, Schüler-ID {row['schueler_id']}")
         db.commit()
         return redirect(url_for("schueler_detail", schueler_id=row["schueler_id"]))
     return redirect(url_for("index"))
+
+
+# ---------- Lektion als bezahlt / offen markieren ----------
+
+@app.route("/lektion/<int:lektion_id>/bezahlt", methods=["POST"])
+@login_erforderlich
+def lektion_bezahlt_umschalten(lektion_id):
+    db = get_db()
+    row = db.execute(
+        """
+        SELECT l.schueler_id, l.bezahlt, s.erstellt_von
+        FROM lektion l JOIN schueler s ON s.id = l.schueler_id
+        WHERE l.id = ?
+        """,
+        (lektion_id,),
+    ).fetchone()
+    if row is not None:
+        pruefe_zugriff(row)
+        neuer_status = 0 if row["bezahlt"] else 1
+        db.execute("UPDATE lektion SET bezahlt = ? WHERE id = ?", (neuer_status, lektion_id))
+        db.commit()
+        return redirect(url_for("schueler_detail", schueler_id=row["schueler_id"]))
+    return redirect(url_for("index"))
+
+
+# ---------- Schüler archivieren / reaktivieren (Soft-Delete) ----------
+
+@app.route("/schueler/<int:schueler_id>/archivieren", methods=["POST"])
+@login_erforderlich
+def schueler_archivieren(schueler_id):
+    db = get_db()
+    schueler = db.execute("SELECT * FROM schueler WHERE id = ?", (schueler_id,)).fetchone()
+    if schueler is None:
+        return redirect(url_for("index"))
+    pruefe_zugriff(schueler)
+
+    neuer_status = 0 if schueler["archiviert"] else 1
+    db.execute("UPDATE schueler SET archiviert = ? WHERE id = ?", (neuer_status, schueler_id))
+    log_aktion(
+        db,
+        "Schüler archiviert" if neuer_status else "Schüler reaktiviert",
+        f"{schueler['vorname']} {schueler['nachname']} (ID {schueler_id})",
+    )
+    db.commit()
+    return redirect(url_for("schueler_detail", schueler_id=schueler_id))
+
+
+# ---------- PDF-Export: Fortschrittsbericht eines Schülers ----------
+
+@app.route("/schueler/<int:schueler_id>/pdf")
+@login_erforderlich
+def schueler_pdf(schueler_id):
+    db = get_db()
+    schueler = db.execute("SELECT * FROM schueler WHERE id = ?", (schueler_id,)).fetchone()
+    if schueler is None:
+        return redirect(url_for("index"))
+    pruefe_zugriff(schueler)
+
+    lektionen = db.execute(
+        """
+        SELECT l.*, GROUP_CONCAT(t.bezeichnung, ', ') AS themen_namen
+        FROM lektion l
+        LEFT JOIN lektion_thema lt ON lt.lektion_id = l.id
+        LEFT JOIN thema t ON t.id = lt.thema_id
+        WHERE l.schueler_id = ?
+        GROUP BY l.id
+        ORDER BY l.datum, l.id
+        """,
+        (schueler_id,),
+    ).fetchall()
+
+    fortschritt = db.execute(
+        """
+        SELECT t.bezeichnung, t.kategorie,
+               COUNT(lt.lektion_id) AS anzahl_geuebt,
+               (
+                   SELECT l2.einschaetzung FROM lektion_thema lt2
+                   JOIN lektion l2 ON l2.id = lt2.lektion_id
+                   WHERE lt2.thema_id = t.id AND l2.schueler_id = ?
+                   ORDER BY l2.datum DESC, l2.id DESC LIMIT 1
+               ) AS letzte_einschaetzung
+        FROM thema t
+        LEFT JOIN lektion_thema lt ON lt.thema_id = t.id
+        LEFT JOIN lektion l ON l.id = lt.lektion_id AND l.schueler_id = ?
+        GROUP BY t.id
+        ORDER BY t.kategorie, t.bezeichnung
+        """,
+        (schueler_id, schueler_id),
+    ).fetchall()
+
+    einschaetzung_text = {1: "unsicher", 2: "Übung nötig", 3: "sicher", None: "noch nicht geübt"}
+    total_minuten = sum(l["dauer_minuten"] for l in lektionen)
+
+    puffer = io.BytesIO()
+    doc = SimpleDocTemplate(puffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
+    stile = getSampleStyleSheet()
+    elemente = [
+        Paragraph("Fahrschule Bern — Fortschrittsbericht", stile["Title"]),
+        Paragraph(f"{schueler['vorname']} {schueler['nachname']}", stile["Heading2"]),
+        Paragraph(
+            f"Status: {schueler['status'].replace('_', ' ')} &nbsp;|&nbsp; "
+            f"Fahrzeug: {schueler['fahrzeug'] or '–'} &nbsp;|&nbsp; "
+            f"Lektionen: {len(lektionen)} &nbsp;|&nbsp; Fahrzeit: {round(total_minuten / 60, 1)} h",
+            stile["Normal"],
+        ),
+        Spacer(1, 0.6 * cm),
+        Paragraph("Fortschritt pro Thema", stile["Heading3"]),
+    ]
+
+    fortschritt_daten = [["Thema", "Kategorie", "Geübt", "Letzte Einschätzung"]]
+    for f in fortschritt:
+        fortschritt_daten.append([
+            f["bezeichnung"], f["kategorie"], f["anzahl_geuebt"],
+            einschaetzung_text.get(f["letzte_einschaetzung"], "–"),
+        ])
+    fortschritt_tabelle = Table(fortschritt_daten, repeatRows=1, hAlign="LEFT")
+    fortschritt_tabelle.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#243d84")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 8),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f5f7")]),
+    ]))
+    elemente.append(fortschritt_tabelle)
+    elemente.append(Spacer(1, 0.8 * cm))
+    elemente.append(Paragraph("Lektionsverlauf", stile["Heading3"]))
+
+    verlauf_daten = [["Datum", "Typ", "Dauer", "Themen", "Einschätzung", "Notiz"]]
+    for l in lektionen:
+        verlauf_daten.append([
+            l["datum"],
+            "Probe" if l["typ"] == "probe" else "Normal",
+            f"{l['dauer_minuten']} min",
+            l["themen_namen"] or "–",
+            einschaetzung_text.get(l["einschaetzung"], "–"),
+            l["notiz"] or "–",
+        ])
+    verlauf_tabelle = Table(verlauf_daten, repeatRows=1, hAlign="LEFT", colWidths=[2 * cm, 1.8 * cm, 1.6 * cm, 5 * cm, 2.8 * cm, 4.5 * cm])
+    verlauf_tabelle.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#243d84")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+        ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f5f7")]),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    elemente.append(verlauf_tabelle)
+    elemente.append(Spacer(1, 0.8 * cm))
+    elemente.append(Paragraph(
+        f"Erstellt am {datetime.now().strftime('%d.%m.%Y')} · Fahrschule Bern", stile["Normal"],
+    ))
+
+    doc.build(elemente)
+    puffer.seek(0)
+
+    dateiname = f"Fortschrittsbericht_{schueler['vorname']}_{schueler['nachname']}.pdf".replace(" ", "_")
+    return send_file(puffer, mimetype="application/pdf", as_attachment=True, download_name=dateiname)
 
 
 # ---------- Eigenes Thema hinzufügen ----------
@@ -460,37 +700,82 @@ def thema_neu():
 
 # ---------- Termine (nächste Fahrstunden) ----------
 
+WOCHENTAGE_KURZ = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"]
+
+
 @app.route("/termine")
 @login_erforderlich
 def termine():
     db = get_db()
     ist_admin = session.get("rolle") == "admin"
+    ansicht = request.args.get("ansicht", "liste")
+    if ansicht not in ("liste", "woche"):
+        ansicht = "liste"
 
+    heute = datetime.now().strftime("%Y-%m-%d")
+
+    # Für die Wochenansicht werden auch erledigte Termine angezeigt (damit
+    # die Woche vollständig ist), für die Listenansicht nur offene.
     basis_query = """
         SELECT t.*, s.vorname, s.nachname, s.erstellt_von
         FROM termin t
         JOIN schueler s ON s.id = t.schueler_id
-        WHERE t.erledigt = 0
+        WHERE {erledigt_filter}
         {und_filter}
         ORDER BY t.datum, t.uhrzeit
     """
+    erledigt_filter = "1=1" if ansicht == "woche" else "t.erledigt = 0"
     if ist_admin:
-        alle_termine = db.execute(basis_query.format(und_filter="")).fetchall()
+        alle_termine = db.execute(
+            basis_query.format(erledigt_filter=erledigt_filter, und_filter="")
+        ).fetchall()
     else:
         alle_termine = db.execute(
-            basis_query.format(und_filter="AND s.erstellt_von = ?"),
+            basis_query.format(erledigt_filter=erledigt_filter, und_filter="AND s.erstellt_von = ?"),
             (session["benutzer"],),
         ).fetchall()
 
-    # Für die Agenda-Ansicht nach Datum gruppieren
+    if ansicht == "woche":
+        try:
+            start_param = datetime.strptime(request.args.get("start", ""), "%Y-%m-%d")
+        except ValueError:
+            start_param = datetime.now()
+        wochenstart = start_param - timedelta(days=start_param.weekday())  # Montag dieser Woche
+
+        termine_pro_tag = {}
+        for t in alle_termine:
+            termine_pro_tag.setdefault(t["datum"], []).append(t)
+
+        woche_tage = []
+        for i in range(7):
+            tag = wochenstart + timedelta(days=i)
+            tag_str = tag.strftime("%Y-%m-%d")
+            woche_tage.append({
+                "datum": tag_str,
+                "label": f"{WOCHENTAGE_KURZ[i]} {tag.strftime('%d.%m.')}",
+                "ist_heute": tag_str == heute,
+                "termine": termine_pro_tag.get(tag_str, []),
+            })
+
+        return render_template(
+            "termine.html",
+            ansicht=ansicht,
+            woche_tage=woche_tage,
+            woche_start=wochenstart.strftime("%Y-%m-%d"),
+            woche_vorher=(wochenstart - timedelta(days=7)).strftime("%Y-%m-%d"),
+            woche_danach=(wochenstart + timedelta(days=7)).strftime("%Y-%m-%d"),
+            ist_admin=ist_admin,
+            heute=heute,
+        )
+
+    # Für die Agenda-/Listenansicht nach Datum gruppieren
     nach_datum = {}
     for t in alle_termine:
         nach_datum.setdefault(t["datum"], []).append(t)
 
-    heute = datetime.now().strftime("%Y-%m-%d")
-
     return render_template(
         "termine.html",
+        ansicht=ansicht,
         nach_datum=nach_datum,
         ist_admin=ist_admin,
         heute=heute,
@@ -525,8 +810,59 @@ def schueler_fahrlehrer_zuweisen(schueler_id):
     if gewaehlt in FAHRLEHRER_LISTE:
         db = get_db()
         db.execute("UPDATE schueler SET erstellt_von = ? WHERE id = ?", (gewaehlt, schueler_id))
+        log_aktion(db, "Fahrlehrer zugewiesen", f"Schüler-ID {schueler_id} → {gewaehlt}")
         db.commit()
     return redirect(url_for("admin_dashboard"))
+
+
+# ---------- Fahrzeugverwaltung (nur Admin) ----------
+
+@app.route("/admin/fahrzeuge", methods=["GET", "POST"])
+@admin_erforderlich
+def admin_fahrzeuge():
+    db = get_db()
+
+    if request.method == "POST":
+        name = request.form.get("name", "").strip()
+        getriebe = request.form.get("getriebe", "").strip()
+        if name and getriebe in ("Automatik", "Geschaltet"):
+            db.execute("INSERT OR IGNORE INTO fahrzeug (name, getriebe) VALUES (?, ?)", (name, getriebe))
+            log_aktion(db, "Fahrzeug hinzugefügt", f"{name} ({getriebe})")
+            db.commit()
+        return redirect(url_for("admin_fahrzeuge"))
+
+    fahrzeuge = db.execute("SELECT * FROM fahrzeug ORDER BY name").fetchall()
+    return render_template("admin_fahrzeuge.html", fahrzeuge=fahrzeuge)
+
+
+@app.route("/admin/fahrzeuge/<int:fahrzeug_id>/loeschen", methods=["POST"])
+@admin_erforderlich
+def admin_fahrzeug_loeschen(fahrzeug_id):
+    db = get_db()
+    fahrzeug = db.execute("SELECT * FROM fahrzeug WHERE id = ?", (fahrzeug_id,)).fetchone()
+    if fahrzeug is not None:
+        # Schüler, die dieses Fahrzeug hatten, verlieren die Zuweisung statt
+        # auf ein nicht mehr existierendes Fahrzeug zu verweisen.
+        db.execute(
+            "UPDATE schueler SET fahrzeug = NULL, getriebe = NULL WHERE fahrzeug = ?",
+            (fahrzeug["name"],),
+        )
+        db.execute("DELETE FROM fahrzeug WHERE id = ?", (fahrzeug_id,))
+        log_aktion(db, "Fahrzeug entfernt", fahrzeug["name"])
+        db.commit()
+    return redirect(url_for("admin_fahrzeuge"))
+
+
+# ---------- Audit-Log (nur Admin) ----------
+
+@app.route("/admin/log")
+@admin_erforderlich
+def admin_log():
+    db = get_db()
+    eintraege = db.execute(
+        "SELECT * FROM audit_log ORDER BY zeitpunkt DESC, id DESC LIMIT 300"
+    ).fetchall()
+    return render_template("admin_log.html", eintraege=eintraege)
 
 
 # ---------- Admin-Dashboard ----------
@@ -540,7 +876,8 @@ def admin_dashboard():
         """
         SELECT COUNT(DISTINCT s.id) AS anzahl_schueler,
                COUNT(l.id) AS anzahl_lektionen,
-               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten
+               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten,
+               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0) AS offene_betraege
         FROM schueler s
         LEFT JOIN lektion l ON l.schueler_id = s.id
         """
@@ -563,7 +900,8 @@ def admin_dashboard():
         """
         SELECT s.*,
                COUNT(l.id) AS anzahl_lektionen,
-               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten
+               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten,
+               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0) AS offener_betrag
         FROM schueler s
         LEFT JOIN lektion l ON l.schueler_id = s.id
         GROUP BY s.id

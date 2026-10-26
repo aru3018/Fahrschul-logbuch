@@ -5,6 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Fahrschule Bern{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#243d84">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Fahrschule Bern">
+    <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}">
+    <link rel="icon" href="{{ url_for('static', filename='img/icon-192.png') }}">
+    <script>
+        if ("serviceWorker" in navigator) {
+            window.addEventListener("load", function () {
+                navigator.serviceWorker.register("{{ url_for('static', filename='service-worker.js') }}");
+            });
+        }
+    </script>
 </head>
 <body>
     <header class="topbar">
@@ -17,6 +33,8 @@
                 {% if session.get('rolle') == 'admin' %}
                     <a href="{{ url_for('admin_dashboard') }}" class="logout-link">📊 Dashboard</a>
                     <a href="{{ url_for('index') }}" class="logout-link">Alle Schüler</a>
+                    <a href="{{ url_for('admin_fahrzeuge') }}" class="logout-link">🚗 Fahrzeuge</a>
+                    <a href="{{ url_for('admin_log') }}" class="logout-link">📜 Protokoll</a>
                 {% endif %}
                 <a href="{{ url_for('termine') }}" class="logout-link">📅 Termine</a>
                 <span class="user-name">{{ session.get('anzeigename') }}</span>

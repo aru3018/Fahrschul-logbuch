@@ -27,6 +27,14 @@
     <label>Lernfahrausweis-Nr. (optional)
         <input type="text" name="lernfahrausweis_nr">
     </label>
+    <div class="form-row">
+        <label>Theorieprüfung (geplant/erfolgt)
+            <input type="date" name="theorie_pruefung_datum">
+        </label>
+        <label>Praktische Prüfung (geplant/erfolgt)
+            <input type="date" name="praxis_pruefung_datum">
+        </label>
+    </div>
     {% if ist_admin %}
     <label>Fahrlehrer zuteilen
         <select name="fahrlehrer">

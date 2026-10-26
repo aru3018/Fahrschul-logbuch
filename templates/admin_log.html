@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}Protokoll · Fahrschule Bern{% endblock %}
+{% block content %}
+
+<div class="page-head">
+    <h1>📜 Aktivitätsprotokoll</h1>
+    <a href="{{ url_for('admin_dashboard') }}" class="btn btn-ghost">← Dashboard</a>
+</div>
+
+<section class="card">
+    {% if eintraege %}
+    <div class="table-wrap">
+    <table class="table table-compact">
+        <thead>
+            <tr><th>Zeitpunkt</th><th>Benutzer</th><th>Aktion</th><th>Details</th></tr>
+        </thead>
+        <tbody>
+            {% for e in eintraege %}
+            <tr>
+                <td class="muted small">{{ e.zeitpunkt }}</td>
+                <td><strong>{{ e.benutzer }}</strong></td>
+                <td>{{ e.aktion }}</td>
+                <td class="muted">{{ e.details or "–" }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+    <p class="small muted" style="margin-top:12px; margin-bottom:0;">Zeigt die letzten 300 Einträge.</p>
+    {% else %}
+    <p class="muted">Noch keine protokollierten Aktionen.</p>
+    {% endif %}
+</section>
+
+{% endblock %}

@@ -36,6 +36,14 @@
             </select>
         </label>
     </div>
+    <div class="form-row">
+        <label>Theorieprüfung (geplant/erfolgt)
+            <input type="date" name="theorie_pruefung_datum" value="{{ schueler.theorie_pruefung_datum or '' }}">
+        </label>
+        <label>Praktische Prüfung (geplant/erfolgt)
+            <input type="date" name="praxis_pruefung_datum" value="{{ schueler.praxis_pruefung_datum or '' }}">
+        </label>
+    </div>
     {% if ist_admin %}
     <div class="form-row">
         <label>Fahrlehrer
