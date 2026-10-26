@@ -32,7 +32,7 @@
         <div class="table-wrap">
         <table class="table table-compact">
             <thead>
-                <tr><th>Fahrlehrer</th><th>Schüler</th><th>Lektionen</th><th>Stunden</th></tr>
+                <tr><th>Fahrlehrer</th><th>Schüler</th><th>Lektionen</th><th>Stunden</th><th>Offener Betrag</th></tr>
             </thead>
             <tbody>
                 {% for f in pro_fahrlehrer %}
@@ -41,9 +41,10 @@
                     <td>{{ f.anzahl_schueler }}</td>
                     <td>{{ f.anzahl_lektionen }}</td>
                     <td>{{ "%.1f"|format(f.total_minuten / 60) }} h</td>
+                    <td>{% if f.offener_betrag %}CHF {{ "%.2f"|format(f.offener_betrag) }}{% else %}<span class="muted">–</span>{% endif %}</td>
                 </tr>
                 {% else %}
-                <tr><td colspan="4" class="muted">Noch keine Schüler erfasst.</td></tr>
+                <tr><td colspan="5" class="muted">Noch keine Schüler erfasst.</td></tr>
                 {% endfor %}
             </tbody>
         </table>

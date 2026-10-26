@@ -57,6 +57,19 @@ CREATE TABLE IF NOT EXISTS termin (
     FOREIGN KEY (schueler_id) REFERENCES schueler(id) ON DELETE CASCADE
 );
 
+-- Einmalige Rechnungspositionen pro Schüler (Pauschalen), getrennt von den
+-- Lektionen: z. B. Versicherungs-/Administrationspauschale bei Anmeldung
+-- oder die Prüfungspauschale.
+CREATE TABLE IF NOT EXISTS rechnungsposition (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    schueler_id INTEGER NOT NULL,
+    bezeichnung TEXT NOT NULL,
+    betrag REAL NOT NULL,
+    bezahlt INTEGER NOT NULL DEFAULT 0,
+    erstellt_am TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY (schueler_id) REFERENCES schueler(id) ON DELETE CASCADE
+);
+
 -- Protokoll wichtiger Aktionen, nur für den Admin einsehbar
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

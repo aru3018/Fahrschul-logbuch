@@ -64,6 +64,27 @@
     </div>
 </section>
 
+{% if rechnungspositionen %}
+<section class="card">
+    <h2>🧾 Pauschalen</h2>
+    <div class="termin-liste">
+        {% for r in rechnungspositionen %}
+        <div class="termin-eintrag">
+            <div class="termin-info">
+                <strong>{{ r.bezeichnung }}</strong>
+                <span class="muted small">CHF {{ "%.2f"|format(r.betrag) }}</span>
+            </div>
+            <form method="post" action="{{ url_for('rechnungsposition_bezahlt_umschalten', position_id=r.id) }}">
+                <button type="submit" class="badge {{ 'badge-sicher' if r.bezahlt else 'badge-unsicher' }}" style="border:none; cursor:pointer;">
+                    {{ 'bezahlt' if r.bezahlt else 'offen' }}
+                </button>
+            </form>
+        </div>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
+
 {% if offene_termine %}
 <section class="card">
     <h2>📅 Geplante nächste Termine</h2>
@@ -139,7 +160,7 @@
                     <input type="date" name="datum" value="{{ heute }}" required>
                 </label>
                 <label>Dauer (Minuten)
-                    <input type="number" name="dauer_minuten" value="45" min="5" step="5" required>
+                    <input type="number" name="dauer_minuten" id="dauer-eingabe" value="{{ standard_lektion_dauer }}" min="5" step="5" required>
                 </label>
             </div>
 
@@ -180,8 +201,8 @@
             </label>
 
             <div class="form-row">
-                <label>Preis (CHF, optional)
-                    <input type="number" name="preis" step="0.05" min="0" placeholder="0.00">
+                <label>Preis (CHF) — automatisch anhand der Dauer, anpassbar
+                    <input type="number" name="preis" id="preis-eingabe" step="0.05" min="0">
                 </label>
                 <label class="checkbox-item" style="margin-top: 22px;">
                     <input type="checkbox" name="bezahlt">
@@ -291,6 +312,22 @@ document.getElementById("eigenes-thema-eingabe").addEventListener("keydown", fun
         eigenesThemaSpeichern();
     }
 });
+
+// Preis automatisch anhand der Dauer vorschlagen (CHF {{ "%.2f"|format(lektion_preis_pro_minute * standard_lektion_dauer) }}
+// für {{ standard_lektion_dauer }} Min.), solange der Preis nicht von Hand geändert wurde.
+const dauerEingabe = document.getElementById("dauer-eingabe");
+const preisEingabe = document.getElementById("preis-eingabe");
+const preisProMinute = {{ lektion_preis_pro_minute }};
+let preisManuellBearbeitet = false;
+
+function preisAutoBerechnen() {
+    if (preisManuellBearbeitet) return;
+    const minuten = parseFloat(dauerEingabe.value) || 0;
+    preisEingabe.value = (Math.round(minuten * preisProMinute * 20) / 20).toFixed(2);
+}
+preisEingabe.addEventListener("input", function () { preisManuellBearbeitet = true; });
+dauerEingabe.addEventListener("input", preisAutoBerechnen);
+preisAutoBerechnen();
 
 // Terminplanung nur bei "Normale Lektion" anzeigen
 function terminBlockAktualisieren() {

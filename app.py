@@ -56,6 +56,20 @@ BENUTZER = {
 # manuelle Fahrlehrer-Zuteilung durch den Admin verwendet.
 FAHRLEHRER_LISTE = [name for name, daten in BENUTZER.items() if daten["rolle"] != "admin"]
 
+# ---------- Preise ----------
+# Standard-Lektionspreis: 1 Fahrlektion (50 Min.) = CHF 99.–, daraus ergibt
+# sich der Minutenpreis für die automatische Preisberechnung im Formular.
+STANDARD_LEKTION_DAUER = 50
+STANDARD_LEKTION_PREIS = 99.00
+LEKTION_PREIS_PRO_MINUTE = STANDARD_LEKTION_PREIS / STANDARD_LEKTION_DAUER
+
+# Einmalige Pauschalen, die bei der Anmeldung eines neuen Schülers
+# automatisch als offene Rechnungsposition angelegt werden.
+PAUSCHALEN_BEI_ANMELDUNG = [
+    ("Versicherungs- und Administrationspauschale", 100.00),
+    ("Prüfungspauschale (2.5h)", 250.00),
+]
+
 
 def login_erforderlich(view):
     @wraps(view)
@@ -225,7 +239,10 @@ def index():
         SELECT s.*,
                COUNT(l.id) AS anzahl_lektionen,
                COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten,
-               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0) AS offener_betrag
+               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0)
+                   + (SELECT COALESCE(SUM(CASE WHEN r.bezahlt = 0 THEN r.betrag ELSE 0 END), 0)
+                      FROM rechnungsposition r WHERE r.schueler_id = s.id)
+                   AS offener_betrag
         FROM schueler s
         LEFT JOIN lektion l ON l.schueler_id = s.id
         {where}
@@ -284,6 +301,19 @@ def schueler_neu():
             db, "Schüler erstellt",
             f"{request.form['vorname'].strip()} {request.form['nachname'].strip()} (ID {cur.lastrowid}), Fahrlehrer: {erstellt_von}",
         )
+
+        # Bei der Erstanmeldung fallen automatisch die Pauschalen an
+        # (Versicherung/Administration + Prüfungspauschale).
+        for bezeichnung, betrag in PAUSCHALEN_BEI_ANMELDUNG:
+            db.execute(
+                "INSERT INTO rechnungsposition (schueler_id, bezeichnung, betrag) VALUES (?, ?, ?)",
+                (cur.lastrowid, bezeichnung, betrag),
+            )
+        log_aktion(
+            db, "Pauschalen verrechnet",
+            f"Schüler-ID {cur.lastrowid}: " + ", ".join(f"{b} CHF {p:.2f}" for b, p in PAUSCHALEN_BEI_ANMELDUNG),
+        )
+
         db.commit()
         return redirect(url_for("admin_dashboard") if ist_admin else url_for("index"))
     return render_template(
@@ -316,10 +346,18 @@ def schueler_detail(schueler_id):
         if lektion_typ not in ("probe", "normal"):
             lektion_typ = "normal"
 
-        try:
-            preis = float(request.form.get("preis", "0").replace(",", ".") or 0)
-        except ValueError:
-            preis = 0
+        # Preis: wird im Formular automatisch anhand der Dauer vorgeschlagen
+        # (CHF 99.– für 50 Min.), lässt sich aber von Hand übersteuern. Ohne
+        # JavaScript (oder leeres Feld) wird hier serverseitig derselbe
+        # Standardpreis berechnet.
+        preis_raw = request.form.get("preis", "").strip()
+        if preis_raw:
+            try:
+                preis = float(preis_raw.replace(",", "."))
+            except ValueError:
+                preis = round(dauer * LEKTION_PREIS_PRO_MINUTE, 2)
+        else:
+            preis = round(dauer * LEKTION_PREIS_PRO_MINUTE, 2)
         bezahlt = 1 if request.form.get("bezahlt") else 0
 
         cur = db.execute(
@@ -408,6 +446,11 @@ def schueler_detail(schueler_id):
         (schueler_id,),
     ).fetchall()
 
+    rechnungspositionen = db.execute(
+        "SELECT * FROM rechnungsposition WHERE schueler_id = ? ORDER BY erstellt_am",
+        (schueler_id,),
+    ).fetchall()
+
     total_minuten = sum(l["dauer_minuten"] for l in lektionen)
     heute = datetime.now().strftime("%Y-%m-%d")
 
@@ -416,8 +459,11 @@ def schueler_detail(schueler_id):
         round(100 * anzahl_themen_geuebt / anzahl_themen_total) if anzahl_themen_total else 0
     )
 
-    total_betrag = sum(l["preis"] for l in lektionen)
-    offener_betrag = sum(l["preis"] for l in lektionen if not l["bezahlt"])
+    total_betrag = sum(l["preis"] for l in lektionen) + sum(r["betrag"] for r in rechnungspositionen)
+    offener_betrag = (
+        sum(l["preis"] for l in lektionen if not l["bezahlt"])
+        + sum(r["betrag"] for r in rechnungspositionen if not r["bezahlt"])
+    )
 
     return render_template(
         "schueler_detail.html",
@@ -426,6 +472,7 @@ def schueler_detail(schueler_id):
         themen=themen,
         fortschritt=fortschritt,
         offene_termine=offene_termine,
+        rechnungspositionen=rechnungspositionen,
         total_minuten=total_minuten,
         heute=heute,
         anzahl_themen_total=anzahl_themen_total,
@@ -433,6 +480,8 @@ def schueler_detail(schueler_id):
         fortschritt_prozent=fortschritt_prozent,
         total_betrag=total_betrag,
         offener_betrag=offener_betrag,
+        standard_lektion_dauer=STANDARD_LEKTION_DAUER,
+        lektion_preis_pro_minute=LEKTION_PREIS_PRO_MINUTE,
     )
 
 
@@ -538,6 +587,29 @@ def lektion_bezahlt_umschalten(lektion_id):
     return redirect(url_for("index"))
 
 
+# ---------- Rechnungsposition (Pauschale) als bezahlt / offen markieren ----------
+
+@app.route("/rechnungsposition/<int:position_id>/bezahlt", methods=["POST"])
+@login_erforderlich
+def rechnungsposition_bezahlt_umschalten(position_id):
+    db = get_db()
+    row = db.execute(
+        """
+        SELECT r.schueler_id, r.bezahlt, s.erstellt_von
+        FROM rechnungsposition r JOIN schueler s ON s.id = r.schueler_id
+        WHERE r.id = ?
+        """,
+        (position_id,),
+    ).fetchone()
+    if row is not None:
+        pruefe_zugriff(row)
+        neuer_status = 0 if row["bezahlt"] else 1
+        db.execute("UPDATE rechnungsposition SET bezahlt = ? WHERE id = ?", (neuer_status, position_id))
+        db.commit()
+        return redirect(url_for("schueler_detail", schueler_id=row["schueler_id"]))
+    return redirect(url_for("index"))
+
+
 # ---------- Schüler archivieren / reaktivieren (Soft-Delete) ----------
 
 @app.route("/schueler/<int:schueler_id>/archivieren", methods=["POST"])
@@ -603,8 +675,18 @@ def schueler_pdf(schueler_id):
         (schueler_id, schueler_id),
     ).fetchall()
 
+    rechnungspositionen = db.execute(
+        "SELECT * FROM rechnungsposition WHERE schueler_id = ? ORDER BY erstellt_am",
+        (schueler_id,),
+    ).fetchall()
+
     einschaetzung_text = {1: "unsicher", 2: "Übung nötig", 3: "sicher", None: "noch nicht geübt"}
     total_minuten = sum(l["dauer_minuten"] for l in lektionen)
+    total_betrag = sum(l["preis"] for l in lektionen) + sum(r["betrag"] for r in rechnungspositionen)
+    offener_betrag = (
+        sum(l["preis"] for l in lektionen if not l["bezahlt"])
+        + sum(r["betrag"] for r in rechnungspositionen if not r["bezahlt"])
+    )
 
     puffer = io.BytesIO()
     doc = SimpleDocTemplate(puffer, pagesize=A4, topMargin=2 * cm, bottomMargin=2 * cm)
@@ -660,7 +742,31 @@ def schueler_pdf(schueler_id):
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
     ]))
     elemente.append(verlauf_tabelle)
+
+    if rechnungspositionen:
+        elemente.append(Spacer(1, 0.8 * cm))
+        elemente.append(Paragraph("Pauschalen", stile["Heading3"]))
+        pauschalen_daten = [["Bezeichnung", "Betrag", "Status"]]
+        for r in rechnungspositionen:
+            pauschalen_daten.append([
+                r["bezeichnung"], f"CHF {r['betrag']:.2f}", "bezahlt" if r["bezahlt"] else "offen",
+            ])
+        pauschalen_tabelle = Table(pauschalen_daten, repeatRows=1, hAlign="LEFT", colWidths=[9 * cm, 3 * cm, 3 * cm])
+        pauschalen_tabelle.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#243d84")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#cccccc")),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f5f7")]),
+        ]))
+        elemente.append(pauschalen_tabelle)
+
     elemente.append(Spacer(1, 0.8 * cm))
+    elemente.append(Paragraph(
+        f"<b>Total: CHF {total_betrag:.2f} &nbsp;|&nbsp; Offener Betrag: CHF {offener_betrag:.2f}</b>",
+        stile["Normal"],
+    ))
+    elemente.append(Spacer(1, 0.4 * cm))
     elemente.append(Paragraph(
         f"Erstellt am {datetime.now().strftime('%d.%m.%Y')} · Fahrschule Bern", stile["Normal"],
     ))
@@ -877,18 +983,28 @@ def admin_dashboard():
         SELECT COUNT(DISTINCT s.id) AS anzahl_schueler,
                COUNT(l.id) AS anzahl_lektionen,
                COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten,
-               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0) AS offene_betraege
+               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0)
+                   + (SELECT COALESCE(SUM(CASE WHEN bezahlt = 0 THEN betrag ELSE 0 END), 0) FROM rechnungsposition)
+                   AS offene_betraege
         FROM schueler s
         LEFT JOIN lektion l ON l.schueler_id = s.id
         """
     ).fetchone()
 
+    # Offene Beträge pro Fahrlehrer: nur die Kosten der jeweils eigenen
+    # Schüler (Lektionen + Pauschalen).
     pro_fahrlehrer = db.execute(
         """
         SELECT s.erstellt_von AS benutzer,
                COUNT(DISTINCT s.id) AS anzahl_schueler,
                COUNT(l.id) AS anzahl_lektionen,
-               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten
+               COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten,
+               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0)
+                   + (SELECT COALESCE(SUM(CASE WHEN r.bezahlt = 0 THEN r.betrag ELSE 0 END), 0)
+                      FROM rechnungsposition r
+                      JOIN schueler s2 ON s2.id = r.schueler_id
+                      WHERE s2.erstellt_von = s.erstellt_von)
+                   AS offener_betrag
         FROM schueler s
         LEFT JOIN lektion l ON l.schueler_id = s.id
         GROUP BY s.erstellt_von
@@ -901,7 +1017,10 @@ def admin_dashboard():
         SELECT s.*,
                COUNT(l.id) AS anzahl_lektionen,
                COALESCE(SUM(l.dauer_minuten), 0) AS total_minuten,
-               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0) AS offener_betrag
+               COALESCE(SUM(CASE WHEN l.bezahlt = 0 THEN l.preis ELSE 0 END), 0)
+                   + (SELECT COALESCE(SUM(CASE WHEN r.bezahlt = 0 THEN r.betrag ELSE 0 END), 0)
+                      FROM rechnungsposition r WHERE r.schueler_id = s.id)
+                   AS offener_betrag
         FROM schueler s
         LEFT JOIN lektion l ON l.schueler_id = s.id
         GROUP BY s.id
