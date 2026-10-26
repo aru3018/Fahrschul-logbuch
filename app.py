@@ -33,8 +33,10 @@ app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-key-bitte-in-produktion
 # Fahrzeugflotte: Name -> Standard-Getriebeart (wird beim Anlegen/Bearbeiten
 # automatisch vorausgewählt, lässt sich aber von Hand übersteuern).
 FAHRZEUGE = {
-    "Tesla Model 3": "Automatik",
-    "Mercedes-Benz A43": "Geschaltet",
+    "VW Golf GTI": "Automatik",
+    "VW Golf": "Automatik",
+    "Seat": "Geschaltet",
+    "VW T-Roc": "Automatik",
 }
 
 BENUTZER = {
@@ -135,6 +137,14 @@ def init_db():
     # Konto "Viji" wurde durch "Pesche" ersetzt – bisherige Schüler von Viji
     # werden automatisch Pesche zugeordnet, statt verwaist zu sein.
     db.execute("UPDATE schueler SET erstellt_von = 'Pesche' WHERE erstellt_von = 'Viji'")
+
+    # Fuhrpark wurde ersetzt (Tesla Model 3 / Mercedes-Benz A43 ausgemustert) –
+    # Schüler mit einem der alten Fahrzeuge verlieren die Zuweisung, statt auf
+    # ein nicht mehr existierendes Fahrzeug zu verweisen.
+    db.execute(
+        "UPDATE schueler SET fahrzeug = NULL, getriebe = NULL "
+        "WHERE fahrzeug IN ('Tesla Model 3', 'Mercedes-Benz A43')"
+    )
 
     db.commit()
     db.close()
