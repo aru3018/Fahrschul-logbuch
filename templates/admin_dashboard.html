@@ -88,7 +88,15 @@
             {% for s in alle_schueler %}
             <tr>
                 <td><strong>{{ s.vorname }} {{ s.nachname }}</strong></td>
-                <td>{{ s.erstellt_von }}</td>
+                <td>
+                    <form method="post" action="{{ url_for('schueler_fahrlehrer_zuweisen', schueler_id=s.id) }}" class="inline-form">
+                        <select name="fahrlehrer" onchange="this.form.requestSubmit()">
+                            {% for f in fahrlehrer_liste %}
+                            <option value="{{ f }}" {% if s.erstellt_von == f %}selected{% endif %}>{{ f }}</option>
+                            {% endfor %}
+                        </select>
+                    </form>
+                </td>
                 <td><span class="badge badge-{{ s.status }}">{{ s.status|replace('_', ' ') }}</span></td>
                 <td>{{ s.anzahl_lektionen }}</td>
                 <td>{{ "%.1f"|format(s.total_minuten / 60) }} h</td>

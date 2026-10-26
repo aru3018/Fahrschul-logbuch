@@ -36,6 +36,17 @@
             </select>
         </label>
     </div>
+    {% if ist_admin %}
+    <div class="form-row">
+        <label>Fahrlehrer
+            <select name="fahrlehrer">
+                {% for f in fahrlehrer_liste %}
+                <option value="{{ f }}" {% if schueler.erstellt_von == f %}selected{% endif %}>{{ f }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </div>
+    {% endif %}
     <div class="form-row">
         <label>Fahrzeug
             <select name="fahrzeug" id="fahrzeug-auswahl">

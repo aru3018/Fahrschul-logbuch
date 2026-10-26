@@ -45,6 +45,10 @@ BENUTZER = {
     "Administrator": {"passwort": "Admin$1", "rolle": "admin", "anzeigename": "Administrator"},
 }
 
+# Liste der Fahrlehrer-Benutzernamen (ohne Admin-Konten) – wird für die
+# manuelle Fahrlehrer-Zuteilung durch den Admin verwendet.
+FAHRLEHRER_LISTE = [name for name, daten in BENUTZER.items() if daten["rolle"] != "admin"]
+
 
 def login_erforderlich(view):
     @wraps(view)
@@ -186,8 +190,19 @@ def index():
 @app.route("/schueler/neu", methods=["GET", "POST"])
 @login_erforderlich
 def schueler_neu():
+    ist_admin = session.get("rolle") == "admin"
+
     if request.method == "POST":
         db = get_db()
+
+        # Admins können den Schüler direkt einem Fahrlehrer zuteilen,
+        # normale Fahrlehrer legen den Schüler immer bei sich selbst an.
+        erstellt_von = session["benutzer"]
+        if ist_admin:
+            gewaehlt = request.form.get("fahrlehrer", "").strip()
+            if gewaehlt in FAHRLEHRER_LISTE:
+                erstellt_von = gewaehlt
+
         db.execute(
             """
             INSERT INTO schueler
@@ -200,14 +215,19 @@ def schueler_neu():
                 request.form.get("email", "").strip(),
                 request.form.get("telefon", "").strip(),
                 request.form.get("lernfahrausweis_nr", "").strip(),
-                session["benutzer"],
+                erstellt_von,
                 request.form.get("fahrzeug", "").strip(),
                 request.form.get("getriebe", "").strip(),
             ),
         )
         db.commit()
-        return redirect(url_for("index"))
-    return render_template("schueler_neu.html", fahrzeuge=FAHRZEUGE)
+        return redirect(url_for("admin_dashboard") if ist_admin else url_for("index"))
+    return render_template(
+        "schueler_neu.html",
+        fahrzeuge=FAHRZEUGE,
+        ist_admin=ist_admin,
+        fahrlehrer_liste=FAHRLEHRER_LISTE,
+    )
 
 
 # ---------- Schülerdetail: Verlauf + neue Lektion erfassen ----------
@@ -347,13 +367,22 @@ def schueler_bearbeiten(schueler_id):
     if schueler is None:
         return redirect(url_for("index"))
     pruefe_zugriff(schueler)
+    ist_admin = session.get("rolle") == "admin"
 
     if request.method == "POST":
+        # Nur Admins dürfen hier den zuständigen Fahrlehrer umstellen.
+        erstellt_von = schueler["erstellt_von"]
+        if ist_admin:
+            gewaehlt = request.form.get("fahrlehrer", "").strip()
+            if gewaehlt in FAHRLEHRER_LISTE:
+                erstellt_von = gewaehlt
+
         db.execute(
             """
             UPDATE schueler
             SET vorname = ?, nachname = ?, email = ?, telefon = ?,
-                lernfahrausweis_nr = ?, status = ?, fahrzeug = ?, getriebe = ?
+                lernfahrausweis_nr = ?, status = ?, fahrzeug = ?, getriebe = ?,
+                erstellt_von = ?
             WHERE id = ?
             """,
             (
@@ -365,13 +394,20 @@ def schueler_bearbeiten(schueler_id):
                 request.form["status"],
                 request.form.get("fahrzeug", "").strip(),
                 request.form.get("getriebe", "").strip(),
+                erstellt_von,
                 schueler_id,
             ),
         )
         db.commit()
         return redirect(url_for("schueler_detail", schueler_id=schueler_id))
 
-    return render_template("schueler_bearbeiten.html", schueler=schueler, fahrzeuge=FAHRZEUGE)
+    return render_template(
+        "schueler_bearbeiten.html",
+        schueler=schueler,
+        fahrzeuge=FAHRZEUGE,
+        ist_admin=ist_admin,
+        fahrlehrer_liste=FAHRLEHRER_LISTE,
+    )
 
 
 # ---------- Lektion löschen (Korrektur bei Fehleingabe) ----------
@@ -480,6 +516,19 @@ def termin_erledigt(termin_id):
     return redirect(url_for("termine"))
 
 
+# ---------- Fahrlehrer-Zuteilung (nur Admin, direkt aus dem Dashboard) ----------
+
+@app.route("/schueler/<int:schueler_id>/fahrlehrer", methods=["POST"])
+@admin_erforderlich
+def schueler_fahrlehrer_zuweisen(schueler_id):
+    gewaehlt = request.form.get("fahrlehrer", "").strip()
+    if gewaehlt in FAHRLEHRER_LISTE:
+        db = get_db()
+        db.execute("UPDATE schueler SET erstellt_von = ? WHERE id = ?", (gewaehlt, schueler_id))
+        db.commit()
+    return redirect(url_for("admin_dashboard"))
+
+
 # ---------- Admin-Dashboard ----------
 
 @app.route("/admin")
@@ -536,6 +585,7 @@ def admin_dashboard():
         pro_fahrlehrer=pro_fahrlehrer,
         alle_schueler=alle_schueler,
         benutzerkonten=benutzerkonten,
+        fahrlehrer_liste=FAHRLEHRER_LISTE,
     )
 
 

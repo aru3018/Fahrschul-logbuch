@@ -169,6 +169,14 @@ h2 {
 }
 .btn-small:hover { background: #ddd6fe; }
 
+.inline-form { margin: 0; display: inline-block; }
+.inline-form select {
+    padding: 4px 8px;
+    font-size: 0.85rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
 .badge {
     display: inline-block;
     padding: 3px 11px;

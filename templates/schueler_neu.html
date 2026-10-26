@@ -27,6 +27,15 @@
     <label>Lernfahrausweis-Nr. (optional)
         <input type="text" name="lernfahrausweis_nr">
     </label>
+    {% if ist_admin %}
+    <label>Fahrlehrer zuteilen
+        <select name="fahrlehrer">
+            {% for f in fahrlehrer_liste %}
+            <option value="{{ f }}">{{ f }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    {% endif %}
     <div class="form-row">
         <label>Fahrzeug
             <select name="fahrzeug" id="fahrzeug-auswahl">
