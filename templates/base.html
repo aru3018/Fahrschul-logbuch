@@ -3,14 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>{% block title %}Start Drive Fahrschule{% endblock %}</title>
+    <title>{% block title %}Fahrschule Bern{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
     <header class="topbar">
         <div class="topbar-inner">
             <a href="{{ url_for('index') }}" class="brand">
-                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Start Drive Fahrschule" class="brand-logo">
+                <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Fahrschule Bern" class="brand-logo">
             </a>
             {% if session.get('benutzer') %}
             <div class="user-area">

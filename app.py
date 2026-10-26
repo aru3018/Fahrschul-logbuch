@@ -39,7 +39,7 @@ FAHRZEUGE = {
 
 BENUTZER = {
     "aru": {"passwort": "Test123", "rolle": "user", "anzeigename": "Aru"},
-    "Viji": {"passwort": "Viji1$", "rolle": "user", "anzeigename": "Viji"},
+    "Pesche": {"passwort": "Pesche1", "rolle": "user", "anzeigename": "Pesche"},
     "Administrator": {"passwort": "Admin$1", "rolle": "admin", "anzeigename": "Administrator"},
 }
 
@@ -131,6 +131,10 @@ def init_db():
     lektion_spalten = [row[1] for row in db.execute("PRAGMA table_info(lektion)").fetchall()]
     if "typ" not in lektion_spalten:
         db.execute("ALTER TABLE lektion ADD COLUMN typ TEXT NOT NULL DEFAULT 'normal'")
+
+    # Konto "Viji" wurde durch "Pesche" ersetzt – bisherige Schüler von Viji
+    # werden automatisch Pesche zugeordnet, statt verwaist zu sein.
+    db.execute("UPDATE schueler SET erstellt_von = 'Pesche' WHERE erstellt_von = 'Viji'")
 
     db.commit()
     db.close()
