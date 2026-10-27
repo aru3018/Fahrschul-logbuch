@@ -70,6 +70,29 @@ CREATE TABLE IF NOT EXISTS rechnungsposition (
     FOREIGN KEY (schueler_id) REFERENCES schueler(id) ON DELETE CASCADE
 );
 
+-- Benutzerkonten. Ersetzt das früher fest im Code hinterlegte
+-- BENUTZER-Dict, damit E-Mail/Telefon/Passwort über die Oberfläche
+-- (Profilseite, Passwort-vergessen) persistent geändert werden können.
+CREATE TABLE IF NOT EXISTS benutzer (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    benutzername TEXT NOT NULL UNIQUE,
+    passwort TEXT NOT NULL,
+    rolle TEXT NOT NULL DEFAULT 'user',  -- 'user' = Fahrlehrer, 'admin' = Administrator
+    anzeigename TEXT NOT NULL,
+    email TEXT,
+    telefon TEXT
+);
+
+-- Tokens für den "Passwort vergessen"-Ablauf, jeweils 1 Stunde gültig.
+CREATE TABLE IF NOT EXISTS passwort_reset (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    benutzername TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    erstellt_am TEXT NOT NULL DEFAULT (datetime('now')),
+    gueltig_bis TEXT NOT NULL,
+    verwendet INTEGER NOT NULL DEFAULT 0
+);
+
 -- Protokoll wichtiger Aktionen, nur für den Admin einsehbar
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

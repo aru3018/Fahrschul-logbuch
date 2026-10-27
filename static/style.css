@@ -442,6 +442,52 @@ h2 {
     margin: 0 0 16px;
 }
 
+.login-footer-link {
+    margin: 18px 0 0;
+    text-align: center;
+    font-size: 0.86rem;
+}
+
+.login-footer-link a {
+    color: var(--primary);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.login-footer-link a:hover {
+    text-decoration: underline;
+}
+
+.login-hinweis {
+    background: var(--primary-light);
+    color: var(--primary-dark);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.86rem;
+    margin: 0 0 16px;
+    text-align: left;
+}
+
+/* --- Generische Erfolgs-/Fehlermeldungen (Profilseite usw.) --- */
+
+.banner-erfolg {
+    background: var(--green-light);
+    color: var(--green);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.86rem;
+    margin: 0 0 16px;
+}
+
+.banner-fehler {
+    background: var(--red-light);
+    color: var(--red);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.86rem;
+    margin: 0 0 16px;
+}
+
 /* --- Topbar: Benutzerbereich --- */
 
 .topbar-inner {

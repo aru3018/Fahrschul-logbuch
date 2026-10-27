@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Neues Passwort setzen · Fahrschule Bern</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="login-wrap">
+        <div class="login-card">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Fahrschule Bern" class="login-logo">
+            <h1 class="login-title">Neues Passwort setzen</h1>
+
+            {% if fehler %}
+            <p class="login-fehler">{{ fehler }}</p>
+            {% endif %}
+
+            {% if erledigt %}
+            <p class="login-hinweis">Dein Passwort wurde geändert. Du kannst dich jetzt damit anmelden.</p>
+            <p class="login-footer-link">
+                <a href="{{ url_for('login') }}">Zur Anmeldung</a>
+            </p>
+            {% elif gueltig %}
+            <form method="post" class="form">
+                <label>Neues Passwort
+                    <input type="password" name="neues_passwort" required minlength="4" autocomplete="new-password">
+                </label>
+                <label>Neues Passwort bestätigen
+                    <input type="password" name="bestaetigung" required minlength="4" autocomplete="new-password">
+                </label>
+                <button type="submit" class="btn btn-primary login-btn">Passwort speichern</button>
+            </form>
+            {% else %}
+            <p class="login-footer-link">
+                <a href="{{ url_for('passwort_vergessen') }}">Neuen Link anfordern</a>
+            </p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>

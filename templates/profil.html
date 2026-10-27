@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Mein Profil · Fahrschule Bern{% endblock %}
+{% block content %}
+
+<div class="page-head">
+    <h1>👤 Mein Profil</h1>
+    <a href="{{ url_for('index') }}" class="btn btn-ghost">← Zurück</a>
+</div>
+
+{% if erfolg %}
+<p class="banner-erfolg">{{ erfolg }}</p>
+{% endif %}
+{% if fehler %}
+<p class="banner-fehler">{{ fehler }}</p>
+{% endif %}
+
+<div class="grid-2">
+    <section class="card">
+        <h2>Kontaktdaten</h2>
+        <form method="post" class="form">
+            <input type="hidden" name="aktion" value="kontakt">
+            <label>Benutzername
+                <input type="text" value="{{ konto.benutzername }}" disabled>
+            </label>
+            <label>Anzeigename
+                <input type="text" name="anzeigename" value="{{ konto.anzeigename }}" required>
+            </label>
+            <label>E-Mail-Adresse
+                <input type="email" name="email" value="{{ konto.email or '' }}" autocomplete="email" placeholder="z. B. deine.adresse@email.ch">
+            </label>
+            <label>Telefonnummer
+                <input type="tel" name="telefon" value="{{ konto.telefon or '' }}" autocomplete="tel" placeholder="z. B. 079 123 45 67">
+            </label>
+            <button type="submit" class="btn btn-primary">Speichern</button>
+        </form>
+        <p class="small muted" style="margin-top:12px; margin-bottom:0;">
+            Die E-Mail-Adresse wird für den "Passwort vergessen"-Link benötigt.
+        </p>
+    </section>
+
+    <section class="card">
+        <h2>Passwort ändern</h2>
+        <form method="post" class="form">
+            <input type="hidden" name="aktion" value="passwort">
+            <label>Aktuelles Passwort
+                <input type="password" name="aktuelles_passwort" required autocomplete="current-password">
+            </label>
+            <label>Neues Passwort
+                <input type="password" name="neues_passwort" required minlength="4" autocomplete="new-password">
+            </label>
+            <label>Neues Passwort bestätigen
+                <input type="password" name="bestaetigung" required minlength="4" autocomplete="new-password">
+            </label>
+            <button type="submit" class="btn btn-primary">Passwort ändern</button>
+        </form>
+    </section>
+</div>
+
+{% endblock %}

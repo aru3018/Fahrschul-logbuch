@@ -37,7 +37,7 @@
                     <a href="{{ url_for('admin_log') }}" class="logout-link">📜 Protokoll</a>
                 {% endif %}
                 <a href="{{ url_for('termine') }}" class="logout-link">📅 Termine</a>
-                <span class="user-name">{{ session.get('anzeigename') }}</span>
+                <a href="{{ url_for('profil') }}" class="logout-link">👤 {{ session.get('anzeigename') }}</a>
                 <a href="{{ url_for('logout') }}" class="logout-link">Abmelden</a>
             </div>
             {% endif %}

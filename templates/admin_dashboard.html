@@ -56,7 +56,7 @@
         <div class="table-wrap">
         <table class="table table-compact">
             <thead>
-                <tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th></tr>
+                <tr><th>Benutzername</th><th>Anzeigename</th><th>Rolle</th><th>E-Mail</th></tr>
             </thead>
             <tbody>
                 {% for b in benutzerkonten %}
@@ -70,13 +70,14 @@
                             <span class="badge badge-aktiv">Fahrlehrer</span>
                         {% endif %}
                     </td>
+                    <td>{{ b.email or "–" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
         </div>
         <p class="small muted" style="margin-top:12px; margin-bottom:0;">
-            Konten sind im Prototyp fest hinterlegt (noch keine Benutzerverwaltung über die Oberfläche).
+            E-Mail, Telefon, Anzeigename und Passwort können die Benutzer selbst über "Mein Profil" ändern.
         </p>
     </section>
 </div>

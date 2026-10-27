@@ -12,8 +12,11 @@ Dann im Browser: http://localhost:5000
 
 import io
 import os
+import secrets
+import smtplib
 import sqlite3
 from datetime import datetime, timedelta
+from email.message import EmailMessage
 from functools import wraps
 from pathlib import Path
 
@@ -46,15 +49,18 @@ FAHRZEUGE_STANDARD = {
     "VW T-Roc": "Automatik",
 }
 
-BENUTZER = {
+# Start-Konten, mit denen die "benutzer"-Tabelle beim ersten Start befüllt
+# wird. Danach läuft alles über die DB (Login, Profilseite,
+# Passwort-vergessen) – dieses Dict wird nur noch für die Erstbefüllung
+# gebraucht, nicht mehr zur Laufzeit gelesen.
+BENUTZER_STANDARD = {
     "aru": {"passwort": "Test123", "rolle": "user", "anzeigename": "Aru"},
     "Pesche": {"passwort": "Pesche1", "rolle": "user", "anzeigename": "Pesche"},
     "Administrator": {"passwort": "Admin$1", "rolle": "admin", "anzeigename": "Administrator"},
 }
 
-# Liste der Fahrlehrer-Benutzernamen (ohne Admin-Konten) – wird für die
-# manuelle Fahrlehrer-Zuteilung durch den Admin verwendet.
-FAHRLEHRER_LISTE = [name for name, daten in BENUTZER.items() if daten["rolle"] != "admin"]
+# Gültigkeitsdauer eines Passwort-Reset-Links.
+RESET_TOKEN_GUELTIGKEIT_STUNDEN = 1
 
 # ---------- Preise ----------
 # Standard-Lektionspreis: 1 Fahrlektion (50 Min.) = CHF 99.–, daraus ergibt
@@ -116,15 +122,74 @@ def log_aktion(db, aktion, details=""):
     )
 
 
+def hole_benutzerkonto(db, benutzername):
+    """Liefert die Zeile aus der benutzer-Tabelle oder None."""
+    return db.execute(
+        "SELECT * FROM benutzer WHERE benutzername = ?", (benutzername,)
+    ).fetchone()
+
+
+def hole_fahrlehrer_liste(db):
+    """Liste der Fahrlehrer-Benutzernamen (ohne Admin-Konten) – wird für
+    die manuelle Fahrlehrer-Zuteilung durch den Admin verwendet."""
+    return [
+        row["benutzername"]
+        for row in db.execute(
+            "SELECT benutzername FROM benutzer WHERE rolle != 'admin' ORDER BY benutzername"
+        ).fetchall()
+    ]
+
+
+def sende_email(empfaenger, betreff, text):
+    """Verschickt eine E-Mail über SMTP, sofern per Umgebungsvariablen
+    konfiguriert (SMTP_HOST, SMTP_PORT, SMTP_BENUTZER, SMTP_PASSWORT,
+    SMTP_ABSENDER). Ist kein SMTP eingerichtet oder keine Empfänger-Adresse
+    bekannt, wird der Inhalt stattdessen auf der Konsole ausgegeben – so
+    bleibt der Passwort-vergessen-Ablauf auch ohne eigenen Mailserver
+    nutzbar (Link einfach aus dem Server-Log kopieren)."""
+    host = os.environ.get("SMTP_HOST")
+    if not host or not empfaenger:
+        print(
+            f"[E-Mail nicht versendet – SMTP nicht konfiguriert oder keine Adresse hinterlegt]\n"
+            f"An: {empfaenger}\nBetreff: {betreff}\n\n{text}\n"
+        )
+        return False
+
+    port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_benutzer = os.environ.get("SMTP_BENUTZER")
+    smtp_passwort = os.environ.get("SMTP_PASSWORT")
+    absender = os.environ.get("SMTP_ABSENDER", smtp_benutzer or "noreply@fahrschule-bern.ch")
+
+    nachricht = EmailMessage()
+    nachricht["Subject"] = betreff
+    nachricht["From"] = absender
+    nachricht["To"] = empfaenger
+    nachricht.set_content(text)
+
+    try:
+        with smtplib.SMTP(host, port, timeout=10) as server:
+            server.starttls()
+            if smtp_benutzer and smtp_passwort:
+                server.login(smtp_benutzer, smtp_passwort)
+            server.send_message(nachricht)
+        return True
+    except Exception as exc:
+        print(
+            f"[E-Mail-Versand fehlgeschlagen: {exc}]\nAn: {empfaenger}\nBetreff: {betreff}\n\n{text}\n"
+        )
+        return False
+
+
 @app.route("/login", methods=["GET", "POST"])
 def login():
     fehler = None
     if request.method == "POST":
+        db = get_db()
         name = request.form.get("benutzername", "").strip()
         passwort = request.form.get("passwort", "")
-        konto = BENUTZER.get(name)
+        konto = hole_benutzerkonto(db, name)
         if konto and konto["passwort"] == passwort:
-            session["benutzer"] = name
+            session["benutzer"] = konto["benutzername"]
             session["rolle"] = konto["rolle"]
             session["anzeigename"] = konto["anzeigename"]
             standardziel = url_for("admin_dashboard") if konto["rolle"] == "admin" else url_for("index")
@@ -139,6 +204,134 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+# ---------- Passwort vergessen ----------
+
+@app.route("/passwort-vergessen", methods=["GET", "POST"])
+def passwort_vergessen():
+    hinweis = None
+    if request.method == "POST":
+        db = get_db()
+        email = request.form.get("email", "").strip()
+        konto = (
+            db.execute("SELECT * FROM benutzer WHERE email = ?", (email,)).fetchone()
+            if email
+            else None
+        )
+
+        if konto is not None:
+            token = secrets.token_urlsafe(32)
+            gueltig_bis = (
+                datetime.now() + timedelta(hours=RESET_TOKEN_GUELTIGKEIT_STUNDEN)
+            ).strftime("%Y-%m-%d %H:%M:%S")
+            db.execute(
+                "INSERT INTO passwort_reset (benutzername, token, gueltig_bis) VALUES (?, ?, ?)",
+                (konto["benutzername"], token, gueltig_bis),
+            )
+            reset_link = url_for("passwort_zuruecksetzen", token=token, _external=True)
+            sende_email(
+                email,
+                "Passwort zurücksetzen · Fahrschule Bern",
+                f"Hallo {konto['anzeigename']}\n\n"
+                f"Für dein Konto wurde ein neues Passwort angefordert. Klicke auf "
+                f"folgenden Link, um ein neues Passwort zu setzen (gültig für "
+                f"{RESET_TOKEN_GUELTIGKEIT_STUNDEN} Stunde):\n\n{reset_link}\n\n"
+                f"Falls du das nicht warst, kannst du diese E-Mail einfach ignorieren.",
+            )
+            log_aktion(db, "Passwort-Reset angefordert", f"Benutzer: {konto['benutzername']}")
+            db.commit()
+
+        # Bewusst immer dieselbe Meldung, egal ob die E-Mail bekannt ist –
+        # verrät so keine registrierten Adressen.
+        hinweis = "Falls diese E-Mail-Adresse bei uns hinterlegt ist, wurde soeben ein Link zum Zurücksetzen verschickt."
+    return render_template("passwort_vergessen.html", hinweis=hinweis)
+
+
+@app.route("/passwort-zuruecksetzen/<token>", methods=["GET", "POST"])
+def passwort_zuruecksetzen(token):
+    db = get_db()
+    reset = db.execute(
+        "SELECT * FROM passwort_reset WHERE token = ? AND verwendet = 0", (token,)
+    ).fetchone()
+    jetzt = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    gueltig = reset is not None and reset["gueltig_bis"] >= jetzt
+
+    fehler = None
+    erledigt = False
+    if not gueltig:
+        fehler = "Dieser Link ist ungültig oder abgelaufen. Bitte fordere einen neuen an."
+    elif request.method == "POST":
+        neues_passwort = request.form.get("neues_passwort", "")
+        bestaetigung = request.form.get("bestaetigung", "")
+        if len(neues_passwort) < 4:
+            fehler = "Das neue Passwort muss mindestens 4 Zeichen lang sein."
+        elif neues_passwort != bestaetigung:
+            fehler = "Die beiden Passwörter stimmen nicht überein."
+        else:
+            db.execute(
+                "UPDATE benutzer SET passwort = ? WHERE benutzername = ?",
+                (neues_passwort, reset["benutzername"]),
+            )
+            db.execute("UPDATE passwort_reset SET verwendet = 1 WHERE id = ?", (reset["id"],))
+            log_aktion(db, "Passwort zurückgesetzt", f"Benutzer: {reset['benutzername']}")
+            db.commit()
+            erledigt = True
+
+    return render_template(
+        "passwort_zuruecksetzen.html", fehler=fehler, gueltig=gueltig, erledigt=erledigt
+    )
+
+
+# ---------- Eigenes Profil (für jeden eingeloggten Benutzer) ----------
+
+@app.route("/profil", methods=["GET", "POST"])
+@login_erforderlich
+def profil():
+    db = get_db()
+    konto = hole_benutzerkonto(db, session["benutzer"])
+
+    erfolg = None
+    fehler = None
+
+    if request.method == "POST":
+        aktion = request.form.get("aktion")
+
+        if aktion == "kontakt":
+            neuer_anzeigename = request.form.get("anzeigename", "").strip() or konto["anzeigename"]
+            neue_email = request.form.get("email", "").strip()
+            neues_telefon = request.form.get("telefon", "").strip()
+            db.execute(
+                "UPDATE benutzer SET anzeigename = ?, email = ?, telefon = ? WHERE benutzername = ?",
+                (neuer_anzeigename, neue_email, neues_telefon, session["benutzer"]),
+            )
+            session["anzeigename"] = neuer_anzeigename
+            log_aktion(db, "Profil aktualisiert", f"Benutzer: {session['benutzer']}")
+            db.commit()
+            erfolg = "Deine Angaben wurden gespeichert."
+
+        elif aktion == "passwort":
+            aktuelles = request.form.get("aktuelles_passwort", "")
+            neues = request.form.get("neues_passwort", "")
+            bestaetigung = request.form.get("bestaetigung", "")
+            if aktuelles != konto["passwort"]:
+                fehler = "Das aktuelle Passwort ist nicht korrekt."
+            elif len(neues) < 4:
+                fehler = "Das neue Passwort muss mindestens 4 Zeichen lang sein."
+            elif neues != bestaetigung:
+                fehler = "Die beiden neuen Passwörter stimmen nicht überein."
+            else:
+                db.execute(
+                    "UPDATE benutzer SET passwort = ? WHERE benutzername = ?",
+                    (neues, session["benutzer"]),
+                )
+                log_aktion(db, "Passwort geändert", f"Benutzer: {session['benutzer']}")
+                db.commit()
+                erfolg = "Dein Passwort wurde geändert."
+
+        konto = hole_benutzerkonto(db, session["benutzer"])
+
+    return render_template("profil.html", konto=konto, erfolg=erfolg, fehler=fehler)
 
 
 # ---------- Datenbank-Hilfsfunktionen ----------
@@ -190,6 +383,15 @@ def init_db():
     # Fuhrpark-Tabelle beim ersten Start mit dem Standard-Fuhrpark befüllen.
     for name, getriebe in FAHRZEUGE_STANDARD.items():
         db.execute("INSERT OR IGNORE INTO fahrzeug (name, getriebe) VALUES (?, ?)", (name, getriebe))
+
+    # Benutzer-Tabelle beim ersten Start mit den Standard-Konten befüllen
+    # (ersetzt das frühere, fest im Code hinterlegte BENUTZER-Dict – danach
+    # laufen Login, Profil und Passwort-Reset ausschliesslich über die DB).
+    for name, daten in BENUTZER_STANDARD.items():
+        db.execute(
+            "INSERT OR IGNORE INTO benutzer (benutzername, passwort, rolle, anzeigename) VALUES (?, ?, ?, ?)",
+            (name, daten["passwort"], daten["rolle"], daten["anzeigename"]),
+        )
 
     # Konto "Viji" wurde durch "Pesche" ersetzt – bisherige Schüler von Viji
     # werden automatisch Pesche zugeordnet, statt verwaist zu sein.
@@ -274,7 +476,7 @@ def schueler_neu():
         erstellt_von = session["benutzer"]
         if ist_admin:
             gewaehlt = request.form.get("fahrlehrer", "").strip()
-            if gewaehlt in FAHRLEHRER_LISTE:
+            if gewaehlt in hole_fahrlehrer_liste(db):
                 erstellt_von = gewaehlt
 
         cur = db.execute(
@@ -320,7 +522,7 @@ def schueler_neu():
         "schueler_neu.html",
         fahrzeuge=hole_fahrzeuge(db),
         ist_admin=ist_admin,
-        fahrlehrer_liste=FAHRLEHRER_LISTE,
+        fahrlehrer_liste=hole_fahrlehrer_liste(db),
     )
 
 
@@ -502,7 +704,7 @@ def schueler_bearbeiten(schueler_id):
         erstellt_von = schueler["erstellt_von"]
         if ist_admin:
             gewaehlt = request.form.get("fahrlehrer", "").strip()
-            if gewaehlt in FAHRLEHRER_LISTE:
+            if gewaehlt in hole_fahrlehrer_liste(db):
                 erstellt_von = gewaehlt
 
         db.execute(
@@ -537,7 +739,7 @@ def schueler_bearbeiten(schueler_id):
         schueler=schueler,
         fahrzeuge=hole_fahrzeuge(db),
         ist_admin=ist_admin,
-        fahrlehrer_liste=FAHRLEHRER_LISTE,
+        fahrlehrer_liste=hole_fahrlehrer_liste(db),
     )
 
 
@@ -913,8 +1115,8 @@ def termin_erledigt(termin_id):
 @admin_erforderlich
 def schueler_fahrlehrer_zuweisen(schueler_id):
     gewaehlt = request.form.get("fahrlehrer", "").strip()
-    if gewaehlt in FAHRLEHRER_LISTE:
-        db = get_db()
+    db = get_db()
+    if gewaehlt in hole_fahrlehrer_liste(db):
         db.execute("UPDATE schueler SET erstellt_von = ? WHERE id = ?", (gewaehlt, schueler_id))
         log_aktion(db, "Fahrlehrer zugewiesen", f"Schüler-ID {schueler_id} → {gewaehlt}")
         db.commit()
@@ -1028,10 +1230,9 @@ def admin_dashboard():
         """
     ).fetchall()
 
-    benutzerkonten = [
-        {"benutzername": name, **{k: v for k, v in daten.items() if k != "passwort"}}
-        for name, daten in BENUTZER.items()
-    ]
+    benutzerkonten = db.execute(
+        "SELECT benutzername, anzeigename, rolle, email, telefon FROM benutzer ORDER BY benutzername"
+    ).fetchall()
 
     gesamt_stunden = round((gesamt["total_minuten"] or 0) / 60, 1)
 
@@ -1042,7 +1243,7 @@ def admin_dashboard():
         pro_fahrlehrer=pro_fahrlehrer,
         alle_schueler=alle_schueler,
         benutzerkonten=benutzerkonten,
-        fahrlehrer_liste=FAHRLEHRER_LISTE,
+        fahrlehrer_liste=hole_fahrlehrer_liste(db),
     )
 
 

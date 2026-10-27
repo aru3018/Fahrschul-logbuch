@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Passwort vergessen · Fahrschule Bern</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="login-wrap">
+        <div class="login-card">
+            <img src="{{ url_for('static', filename='img/logo.png') }}" alt="Fahrschule Bern" class="login-logo">
+            <h1 class="login-title">Passwort vergessen</h1>
+
+            {% if hinweis %}
+            <p class="login-hinweis">{{ hinweis }}</p>
+            {% else %}
+            <p class="login-hinweis">Gib deine hinterlegte E-Mail-Adresse ein. Wir schicken dir einen Link, mit dem du ein neues Passwort setzen kannst.</p>
+            {% endif %}
+
+            {% if not hinweis %}
+            <form method="post" class="form">
+                <label>E-Mail-Adresse
+                    <input type="email" name="email" required autofocus autocomplete="email">
+                </label>
+                <button type="submit" class="btn btn-primary login-btn">Link senden</button>
+            </form>
+            {% endif %}
+
+            <p class="login-footer-link">
+                <a href="{{ url_for('login') }}">← Zurück zur Anmeldung</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
